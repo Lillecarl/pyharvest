@@ -1,6 +1,30 @@
 from __future__ import annotations
 
 from pyharvest.models.base import HarvestInput, HarvestModel, Open, Ref
+from pyharvest.models.clients import (
+    Client,
+    ClientCreate,
+    ClientUpdate,
+    Contact,
+    ContactCreate,
+    ContactUpdate,
+    InvoiceRecipientStatus,
+)
+from pyharvest.models.company import (
+    Clock,
+    Company,
+    CompanyUpdate,
+    CurrencyCodeDisplay,
+    CurrencySymbolDisplay,
+    EInvoicingEnrollment,
+    EInvoicingProfile,
+    EInvoicingResult,
+    EInvoicingStatus,
+    ReimbursementSettings,
+    ReimbursementSettingsUpdate,
+    TimeFormat,
+    WeekStartDay,
+)
 from pyharvest.models.time_entries import (
     ApprovalStatus,
     ExternalReference,
@@ -18,12 +42,30 @@ from pyharvest.models.users import User, UserCreate, UserUpdate
 
 __all__ = [
     "ApprovalStatus",
+    "Client",
+    "ClientCreate",
+    "ClientUpdate",
+    "Clock",
+    "Company",
+    "CompanyUpdate",
+    "Contact",
+    "ContactCreate",
+    "ContactUpdate",
+    "CurrencyCodeDisplay",
+    "CurrencySymbolDisplay",
+    "EInvoicingEnrollment",
+    "EInvoicingProfile",
+    "EInvoicingResult",
+    "EInvoicingStatus",
     "ExternalReference",
     "ExternalReferenceInput",
     "HarvestInput",
     "HarvestModel",
+    "InvoiceRecipientStatus",
     "Open",
     "Ref",
+    "ReimbursementSettings",
+    "ReimbursementSettingsUpdate",
     "TimeEntry",
     "TimeEntryClient",
     "TimeEntryCreate",
@@ -32,7 +74,9 @@ __all__ = [
     "TimeEntryTaskAssignment",
     "TimeEntryUpdate",
     "TimeEntryUserAssignment",
+    "TimeFormat",
     "User",
     "UserCreate",
     "UserUpdate",
+    "WeekStartDay",
 ]

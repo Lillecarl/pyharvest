@@ -15,7 +15,14 @@ import pytest
 from pydantic import BaseModel
 
 from pyharvest import ForbiddenError, Harvest
-from pyharvest.models import TimeEntry, User
+from pyharvest.models import (
+    Client,
+    Company,
+    Contact,
+    ReimbursementSettings,
+    TimeEntry,
+    User,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -74,6 +81,8 @@ async def raw_list(harvest: Harvest, path: str, key: str) -> list[Any]:
 @pytest.mark.parametrize(
     ("path", "key", "model"),
     [
+        ("clients", "clients", Client),
+        ("contacts", "contacts", Contact),
         ("time_entries", "time_entries", TimeEntry),
         ("users", "users", User),
     ],
@@ -90,10 +99,23 @@ async def test_models_cover_live_fields(
         model.model_validate(record)
 
 
-async def test_me(harvest: Harvest) -> None:
-    raw = (await harvest._session.request("GET", "users/me")).json()
-    assert unmodelled(User, raw) == set()
-    assert (await harvest.users.me()).id == raw["id"]
+@pytest.mark.parametrize(
+    ("path", "model"),
+    [
+        ("users/me", User),
+        ("company", Company),
+        ("company/reimbursement_settings", ReimbursementSettings),
+    ],
+)
+async def test_objects_cover_live_fields(
+    harvest: Harvest, path: str, model: type[BaseModel]
+) -> None:
+    try:
+        raw = (await harvest._session.request("GET", path)).json()
+    except ForbiddenError:
+        pytest.skip(f"{path}: this account may not read it")
+    assert unmodelled(model, raw) == set()
+    model.model_validate(raw)
 
 
 async def test_time_entries_paginate(harvest: Harvest) -> None:

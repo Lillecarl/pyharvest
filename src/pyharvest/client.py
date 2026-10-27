@@ -6,7 +6,13 @@ from typing import TYPE_CHECKING, Final, Self
 import httpx
 
 from pyharvest._session import Session
-from pyharvest.resources import TimeEntries, Users
+from pyharvest.resources import (
+    Clients,
+    CompanySettings,
+    Contacts,
+    TimeEntries,
+    Users,
+)
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -41,6 +47,9 @@ class Harvest:
             transport=transport,
         )
         self._session = Session(http, max_retries=max_retries)
+        self.clients: Final = Clients(self._session)
+        self.company: Final = CompanySettings(self._session)
+        self.contacts: Final = Contacts(self._session)
         self.time_entries: Final = TimeEntries(self._session)
         self.users: Final = Users(self._session)
 
