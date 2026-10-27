@@ -30,7 +30,11 @@ class HarvestModel(BaseModel):
 class HarvestInput(BaseModel):
     """A request body. Only fields set explicitly are sent, so None clears."""
 
-    model_config = ConfigDict(extra="forbid")
+    # Aliases carry wire names pydantic cannot use as fields: `from` is a
+    # keyword, and `_destroy` would be a private attribute.
+    model_config = ConfigDict(
+        extra="forbid", validate_by_name=True, serialize_by_alias=True
+    )
 
 
 class Ref(HarvestModel):

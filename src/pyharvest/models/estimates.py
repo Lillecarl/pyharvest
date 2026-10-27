@@ -4,7 +4,7 @@ import datetime as dt
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import ConfigDict, Field
+from pydantic import Field
 
 from pyharvest.models.base import HarvestInput, HarvestModel, Open, Ref
 
@@ -75,9 +75,6 @@ class EstimateLineItemCreate(HarvestInput):
 class EstimateLineItemUpdate(HarvestInput):
     """Without ``id`` it adds a line item; with ``id`` it changes that one;
     ``destroy=True`` with ``id`` removes it."""
-
-    # Harvest's key is "_destroy", which pydantic would take as a private attribute.
-    model_config = ConfigDict(serialize_by_alias=True, validate_by_name=True)
 
     id: int | None = None
     kind: str | None = None

@@ -4,7 +4,7 @@ import datetime as dt
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import AwareDatetime, ConfigDict, Field
+from pydantic import AwareDatetime, Field
 
 from pyharvest.models.base import HarvestInput, HarvestModel, Open, Ref
 
@@ -50,14 +50,6 @@ class InvoiceMessageEventType(StrEnum):
     CLOSE = "close"
     REOPEN = "re-open"
     DRAFT = "draft"
-
-
-class _AliasedInput(HarvestInput):
-    # `from` is a keyword and `_destroy` a private name in pydantic, so both
-    # fields need an alias, and send() dumps without by_alias.
-    model_config = ConfigDict(
-        extra="forbid", validate_by_name=True, serialize_by_alias=True
-    )
 
 
 class InvoiceLineItemProject(Ref):
@@ -134,7 +126,7 @@ class InvoiceLineItemCreate(HarvestInput):
     taxed2: bool | None = None
 
 
-class InvoiceLineItemUpdate(_AliasedInput):
+class InvoiceLineItemUpdate(HarvestInput):
     """Without ``id`` Harvest adds a line item; with ``id`` it changes that
     item, and ``destroy=True`` removes it."""
 
@@ -149,7 +141,7 @@ class InvoiceLineItemUpdate(_AliasedInput):
     taxed2: bool | None = None
 
 
-class InvoiceTimeImport(_AliasedInput):
+class InvoiceTimeImport(HarvestInput):
     """Leave out ``from_`` and ``to`` to import all unbilled time."""
 
     summary_type: TimeSummaryType
@@ -157,7 +149,7 @@ class InvoiceTimeImport(_AliasedInput):
     to: dt.date | None = None
 
 
-class InvoiceExpenseImport(_AliasedInput):
+class InvoiceExpenseImport(HarvestInput):
     """Leave out ``from_`` and ``to`` to import all unbilled expenses."""
 
     summary_type: ExpenseSummaryType
