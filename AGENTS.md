@@ -6,7 +6,8 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 
 - `src/pyharvest/_session.py`: HTTP, errors, 429 retry, pagination. Resources never touch httpx.
 - `src/pyharvest/models/<section>.py`: response models (`HarvestModel`) and request bodies (`HarvestInput`).
-- `src/pyharvest/resources/<section>.py`: one thin class per endpoint group, attached in `client.py`.
+- `src/pyharvest/resources/<section>.py`: one thin class per endpoint group, attached in `client.py` as a flat attribute named after the doc page (`invoice_payments`, not `invoices.payments`). Sub-resources take the parent id first.
+- `pyharvest.models` exports base types only; sections reuse short names, so import `pyharvest.models.<section>`. Cross-section imports are fine where a type is truly shared (`BudgetBy` from projects).
 
 ## Conventions
 
@@ -15,6 +16,7 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 - Money and hours in responses: `Decimal`. In inputs: `float` (pydantic's JSON mode dumps Decimal as a string).
 - Times of day (`started_time`): `str`; format follows the account's clock setting.
 - Closed "Possible values" sets: `StrEnum`, annotated `Open[E]` on responses so a new value stays `str`. Open-ended sets (currencies, kinds, services): plain `str`.
+- Wire names that are not valid fields (`from`, `_destroy`): `Field(alias=...)` only; `HarvestInput` already serialises by alias.
 - Writes take a `HarvestInput` model; `send()` dumps `exclude_unset=True`, so an explicit `None` sends `null` and clears the field. Never kwargs-with-None-dropped.
 - List methods return `AsyncIterator` from `session.paginate`. Query param `from` is spelled `from_`.
 - Inside a resource class, `list[...]` in an annotation after `def list` resolves to the method: use `Sequence` or keep list types in models.
@@ -24,8 +26,14 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 
 1. Doc page to markdown (curl + html2text into the scratchpad); read the attribute and parameter tables.
 2. Dump live keys with a GET (never POST/PATCH/DELETE: the account holds real data). Keep raw responses out of the repo.
-3. Model, resource, respx test with synthetic fixtures in `tests/fixtures.py`.
-4. Add `(path, key, Model)` to `tests/test_live.py`; it reports live keys the model lacks.
+3. Model, resource, respx test with synthetic fixtures in `tests/fixtures_<section>.py` (`tests/fixtures.py` holds `page()` and the core records).
+4. Add `(path, key, Model, params)` to `tests/test_live.py` (single objects go in the objects table); it reports live keys the model lacks.
+
+## Known gaps
+
+- Multipart is unsupported: expense receipt upload, `POST /v2/imports`.
+- The dev account is a member: most sections 403 and PTO/approvals/reimbursements are disabled, so those models follow the docs. An admin token run of `tests/test_live.py` validates them.
+- Unverified: PTO `user_ids`/`pto_type_ids` are sent comma-joined (Rails may want `user_ids[]`); detailed report `totals` are dropped by `paginate`.
 
 ## Checks
 
