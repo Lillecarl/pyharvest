@@ -6,6 +6,7 @@ Skipped unless HARVEST_TOKEN and HARVEST_ACCOUNT are set, so the Nix build
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 import types
 import typing
@@ -17,11 +18,21 @@ from pydantic import BaseModel
 from pyharvest import ForbiddenError, Harvest
 from pyharvest.models.clients import Client, Contact
 from pyharvest.models.company import Company, ReimbursementSettings
+from pyharvest.models.estimates import Estimate, EstimateItemCategory
+from pyharvest.models.expenses import Expense, ExpenseCategory
+from pyharvest.models.invoices import Invoice, InvoiceItemCategory
+from pyharvest.models.projects import Project, Tag, TaskAssignment, UserAssignment
+from pyharvest.models.reports import DetailedExpenseRow, DetailedTimeRow, TimeByProject
+from pyharvest.models.roles import CustomRole, Permission, Role
+from pyharvest.models.tasks import Task
 from pyharvest.models.time_entries import TimeEntry
+from pyharvest.models.user_details import ProjectAssignment
 from pyharvest.models.users import User
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from pyharvest._session import QueryValue
 
 pytestmark = [
     pytest.mark.anyio,
@@ -66,28 +77,70 @@ async def harvest() -> AsyncIterator[Harvest]:
         yield harvest
 
 
-async def raw_list(harvest: Harvest, path: str, key: str) -> list[Any]:
-    response = await harvest._session.request("GET", path, params={"per_page": 100})
+async def raw_list(
+    harvest: Harvest, path: str, key: str, params: dict[str, QueryValue]
+) -> list[Any]:
+    response = await harvest._session.request(
+        "GET", path, params={"per_page": 100, **params}
+    )
     records = response.json()[key]
     if not records:
         pytest.skip(f"{path}: no records to check")
     return records
 
 
+# Reports reject ranges over a year; keep it recent and cheap (the reports
+# rate limit is 100 requests per 15 minutes).
+_TODAY = dt.date.today()
+_RECENT: dict[str, QueryValue] = {"from": _TODAY - dt.timedelta(days=90), "to": _TODAY}
+
+
 @pytest.mark.parametrize(
-    ("path", "key", "model"),
+    ("path", "key", "model", "params"),
     [
-        ("clients", "clients", Client),
-        ("contacts", "contacts", Contact),
-        ("time_entries", "time_entries", TimeEntry),
-        ("users", "users", User),
+        ("clients", "clients", Client, {}),
+        ("contacts", "contacts", Contact, {}),
+        (
+            "estimate_item_categories",
+            "estimate_item_categories",
+            EstimateItemCategory,
+            {},
+        ),
+        ("estimates", "estimates", Estimate, {}),
+        ("expense_categories", "expense_categories", ExpenseCategory, {}),
+        ("expenses", "expenses", Expense, {}),
+        ("invoice_item_categories", "invoice_item_categories", InvoiceItemCategory, {}),
+        ("invoices", "invoices", Invoice, {}),
+        ("custom_roles", "custom_roles", CustomRole, {}),
+        ("permissions", "permissions", Permission, {}),
+        ("roles", "roles", Role, {}),
+        ("projects", "projects", Project, {}),
+        ("tags", "tags", Tag, {}),
+        ("task_assignments", "task_assignments", TaskAssignment, {}),
+        ("tasks", "tasks", Task, {}),
+        ("time_entries", "time_entries", TimeEntry, {}),
+        ("user_assignments", "user_assignments", UserAssignment, {}),
+        ("users", "users", User, {}),
+        (
+            "users/me/project_assignments",
+            "project_assignments",
+            ProjectAssignment,
+            {},
+        ),
+        ("reports/time/projects", "results", TimeByProject, _RECENT),
+        ("reports/time/detailed", "results", DetailedTimeRow, _RECENT),
+        ("reports/expenses/detailed", "results", DetailedExpenseRow, _RECENT),
     ],
 )
 async def test_models_cover_live_fields(
-    harvest: Harvest, path: str, key: str, model: type[BaseModel]
+    harvest: Harvest,
+    path: str,
+    key: str,
+    model: type[BaseModel],
+    params: dict[str, QueryValue],
 ) -> None:
     try:
-        records = await raw_list(harvest, path, key)
+        records = await raw_list(harvest, path, key, params)
     except ForbiddenError:
         pytest.skip(f"{path}: this account may not read it")
     assert unmodelled(model, records) == set()
