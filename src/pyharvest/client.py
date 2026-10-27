@@ -7,6 +7,7 @@ import httpx
 
 from pyharvest._session import Session
 from pyharvest.resources import (
+    Approvals,
     Clients,
     CompanySettings,
     Contacts,
@@ -16,24 +17,38 @@ from pyharvest.resources import (
     Estimates,
     ExpenseCategories,
     Expenses,
+    GustoIntegration,
+    GustoSyncRuns,
+    HolidayCalendarEntries,
+    HolidayCalendars,
+    Imports,
     InvoiceItemCategories,
     InvoiceMessages,
     InvoicePayments,
     Invoices,
+    NotificationPreferences,
+    Notifications,
     Permissions,
     Projects,
+    PtoAllocations,
+    PtoAssignments,
+    Reimbursements,
     Reports,
     Roles,
     Tags,
     TaskAssignments,
     Tasks,
     TimeEntries,
+    TimeOffBalances,
+    TimeOffPolicies,
+    TimeOffRequests,
     UserAssignments,
     UserBillableRates,
     UserCostRates,
     UserProjectAssignments,
     Users,
     UserTeammates,
+    WorkSchedules,
 )
 
 if TYPE_CHECKING:
@@ -73,6 +88,7 @@ class Harvest:
             transport=transport,
         )
         self._session = Session(http, max_retries=max_retries)
+        self.approvals: Final = Approvals(self._session)
         self.clients: Final = Clients(self._session)
         self.company: Final = CompanySettings(self._session)
         self.contacts: Final = Contacts(self._session)
@@ -82,24 +98,38 @@ class Harvest:
         self.estimates: Final = Estimates(self._session)
         self.expense_categories: Final = ExpenseCategories(self._session)
         self.expenses: Final = Expenses(self._session)
+        self.gusto: Final = GustoIntegration(self._session)
+        self.gusto_sync_runs: Final = GustoSyncRuns(self._session)
+        self.holiday_calendar_entries: Final = HolidayCalendarEntries(self._session)
+        self.holiday_calendars: Final = HolidayCalendars(self._session)
+        self.imports: Final = Imports(self._session)
         self.invoice_item_categories: Final = InvoiceItemCategories(self._session)
         self.invoice_messages: Final = InvoiceMessages(self._session)
         self.invoice_payments: Final = InvoicePayments(self._session)
         self.invoices: Final = Invoices(self._session)
+        self.notification_preferences: Final = NotificationPreferences(self._session)
+        self.notifications: Final = Notifications(self._session)
         self.permissions: Final = Permissions(self._session)
         self.projects: Final = Projects(self._session)
+        self.pto_allocations: Final = PtoAllocations(self._session)
+        self.pto_assignments: Final = PtoAssignments(self._session)
+        self.reimbursements: Final = Reimbursements(self._session)
         self.reports: Final = Reports(self._session)
         self.roles: Final = Roles(self._session)
         self.tags: Final = Tags(self._session)
         self.task_assignments: Final = TaskAssignments(self._session)
         self.tasks: Final = Tasks(self._session)
         self.time_entries: Final = TimeEntries(self._session)
+        self.time_off_balances: Final = TimeOffBalances(self._session)
+        self.time_off_policies: Final = TimeOffPolicies(self._session)
+        self.time_off_requests: Final = TimeOffRequests(self._session)
         self.user_assignments: Final = UserAssignments(self._session)
         self.user_billable_rates: Final = UserBillableRates(self._session)
         self.user_cost_rates: Final = UserCostRates(self._session)
         self.user_project_assignments: Final = UserProjectAssignments(self._session)
         self.user_teammates: Final = UserTeammates(self._session)
         self.users: Final = Users(self._session)
+        self.work_schedules: Final = WorkSchedules(self._session)
 
     @classmethod
     def from_env(cls, *, user_agent: str) -> Self:

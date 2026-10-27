@@ -20,8 +20,19 @@ from pyharvest.models.clients import Client, Contact
 from pyharvest.models.company import Company, ReimbursementSettings
 from pyharvest.models.estimates import Estimate, EstimateItemCategory
 from pyharvest.models.expenses import Expense, ExpenseCategory
+from pyharvest.models.imports import Import
 from pyharvest.models.invoices import Invoice, InvoiceItemCategory
+from pyharvest.models.notifications import Notification, NotificationSettings
 from pyharvest.models.projects import Project, Tag, TaskAssignment, UserAssignment
+from pyharvest.models.pto import (
+    HolidayCalendar,
+    PtoAllocation,
+    PtoAssignment,
+    TimeOffPolicy,
+    TimeOffRequest,
+    WorkSchedule,
+)
+from pyharvest.models.reimbursements import Reimbursement
 from pyharvest.models.reports import DetailedExpenseRow, DetailedTimeRow, TimeByProject
 from pyharvest.models.roles import CustomRole, Permission, Role
 from pyharvest.models.tasks import Task
@@ -121,6 +132,15 @@ _RECENT: dict[str, QueryValue] = {"from": _TODAY - dt.timedelta(days=90), "to": 
         ("time_entries", "time_entries", TimeEntry, {}),
         ("user_assignments", "user_assignments", UserAssignment, {}),
         ("users", "users", User, {}),
+        ("imports", "imports", Import, {}),
+        ("notifications", "notifications", Notification, {}),
+        ("reimbursements", "reimbursements", Reimbursement, {}),
+        ("pto/work_schedules", "pto_work_schedules", WorkSchedule, {}),
+        ("pto/requests", "pto_requests", TimeOffRequest, {}),
+        ("pto/types", "pto_types", TimeOffPolicy, {}),
+        ("pto/holiday_calendars", "pto_holiday_calendars", HolidayCalendar, {}),
+        ("pto/assignments", "assignments", PtoAssignment, {}),
+        ("pto/allocations", "pto_allocations", PtoAllocation, {}),
         (
             "users/me/project_assignments",
             "project_assignments",
@@ -154,6 +174,7 @@ async def test_models_cover_live_fields(
         ("users/me", User),
         ("company", Company),
         ("company/reimbursement_settings", ReimbursementSettings),
+        ("notification_preferences", NotificationSettings),
     ],
 )
 async def test_objects_cover_live_fields(
