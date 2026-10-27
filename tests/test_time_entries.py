@@ -8,7 +8,13 @@ import pytest
 import respx
 
 from pyharvest import Harvest
-from pyharvest.models import ApprovalStatus, ExternalReferenceInput
+from pyharvest.models import (
+    ApprovalStatus,
+    ExternalReferenceInput,
+    TimeEntry,
+    TimeEntryCreate,
+    TimeEntryUpdate,
+)
 
 from . import fixtures
 
@@ -51,11 +57,15 @@ async def test_create_sends_only_set_fields(
     route = router.post("time_entries").respond(201, json=fixtures.time_entry())
 
     await harvest.time_entries.create(
-        project_id=3,
-        task_id=4,
-        spent_date=dt.date(2024, 3, 1),
-        hours=Decimal("1.5"),
-        external_reference=ExternalReferenceInput(id="ext-1", permalink="https://x"),
+        TimeEntryCreate(
+            project_id=3,
+            task_id=4,
+            spent_date=dt.date(2024, 3, 1),
+            hours=1.5,
+            external_reference=ExternalReferenceInput(
+                id="ext-1", permalink="https://x"
+            ),
+        )
     )
 
     assert json.loads(route.calls.last.request.content) == {
@@ -65,6 +75,33 @@ async def test_create_sends_only_set_fields(
         "hours": 1.5,
         "external_reference": {"id": "ext-1", "permalink": "https://x"},
     }
+
+
+@pytest.mark.anyio
+async def test_update_sends_explicit_none_as_null(
+    harvest: Harvest, router: respx.MockRouter
+) -> None:
+    route = router.patch("time_entries/100").respond(json=fixtures.time_entry())
+
+    await harvest.time_entries.update(100, TimeEntryUpdate(notes=None))
+
+    assert json.loads(route.calls.last.request.content) == {"notes": None}
+
+
+def test_unknown_approval_status_stays_str() -> None:
+    entry = TimeEntry.model_validate(fixtures.time_entry(approval_status="pending"))
+    known = TimeEntry.model_validate(fixtures.time_entry(approval_status="approved"))
+
+    assert entry.approval_status == "pending"
+    assert known.approval_status is ApprovalStatus.APPROVED
+
+
+@pytest.mark.anyio
+async def test_naive_datetime_is_rejected(harvest: Harvest) -> None:
+    with pytest.raises(ValueError, match="timezone"):
+        await anext(
+            aiter(harvest.time_entries.list(updated_since=dt.datetime(2024, 3, 1)))
+        )
 
 
 @pytest.mark.anyio

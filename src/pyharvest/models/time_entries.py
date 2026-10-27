@@ -4,7 +4,7 @@ import datetime as dt
 from decimal import Decimal
 from enum import StrEnum
 
-from pyharvest.models.base import HarvestModel, Ref
+from pyharvest.models.base import HarvestInput, HarvestModel, Open, Ref
 
 
 class ApprovalStatus(StrEnum):
@@ -35,11 +35,38 @@ class ExternalReference(HarvestModel):
     service_icon_url: str | None = None
 
 
-class ExternalReferenceInput(HarvestModel):
+class ExternalReferenceInput(HarvestInput):
     id: str
     group_id: str | None = None
     account_id: str | None = None
     permalink: str | None = None
+
+
+class TimeEntryCreate(HarvestInput):
+    """Pass ``hours`` on accounts that track duration, ``started_time`` and
+    ``ended_time`` on accounts that track start and end times. Leaving both
+    out starts a timer."""
+
+    project_id: int
+    task_id: int
+    spent_date: dt.date
+    user_id: int | None = None
+    hours: float | None = None
+    started_time: str | None = None
+    ended_time: str | None = None
+    notes: str | None = None
+    external_reference: ExternalReferenceInput | None = None
+
+
+class TimeEntryUpdate(HarvestInput):
+    project_id: int | None = None
+    task_id: int | None = None
+    spent_date: dt.date | None = None
+    hours: float | None = None
+    started_time: str | None = None
+    ended_time: str | None = None
+    notes: str | None = None
+    external_reference: ExternalReferenceInput | None = None
 
 
 class TimeEntryUserAssignment(HarvestModel):
@@ -83,7 +110,7 @@ class TimeEntry(HarvestModel):
     locked_reason: str | None = None
     is_closed: bool
     """Deprecated by Harvest: read ``approval_status``."""
-    approval_status: ApprovalStatus
+    approval_status: Open[ApprovalStatus]
     is_billed: bool
     timer_started_at: dt.datetime | None = None
     # A string in the account's clock format, "14:59" or "2:59pm".

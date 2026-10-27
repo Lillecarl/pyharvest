@@ -1,0 +1,34 @@
+# pyharvest
+
+Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
+
+## Layout
+
+- `src/pyharvest/_session.py`: HTTP, errors, 429 retry, pagination. Resources never touch httpx.
+- `src/pyharvest/models/<section>.py`: response models (`HarvestModel`) and request bodies (`HarvestInput`).
+- `src/pyharvest/resources/<section>.py`: one thin class per endpoint group, attached in `client.py`.
+
+## Conventions
+
+- Response fields: required when docs and live data agree it is always present. `X | None = None` when permission-gated (member accounts lack rates) or seen null.
+- Nested `{id, name}` stubs: `Ref`, or a `Ref` subclass when live adds keys.
+- Money and hours in responses: `Decimal`. In inputs: `float` (pydantic's JSON mode dumps Decimal as a string).
+- Times of day (`started_time`): `str`; format follows the account's clock setting.
+- Closed "Possible values" sets: `StrEnum`, annotated `Open[E]` on responses so a new value stays `str`. Open-ended sets (currencies, kinds, services): plain `str`.
+- Writes take a `HarvestInput` model; `send()` dumps `exclude_unset=True`, so an explicit `None` sends `null` and clears the field. Never kwargs-with-None-dropped.
+- List methods return `AsyncIterator` from `session.paginate`. Query param `from` is spelled `from_`.
+- Inside a resource class, `list[...]` in an annotation after `def list` resolves to the method: use `Sequence` or keep list types in models.
+- Datetime query params must be timezone-aware; `query()` raises otherwise.
+
+## Adding a resource
+
+1. Doc page to markdown (curl + html2text into the scratchpad); read the attribute and parameter tables.
+2. Dump live keys with a GET (never POST/PATCH/DELETE: the account holds real data). Keep raw responses out of the repo.
+3. Model, resource, respx test with synthetic fixtures in `tests/fixtures.py`.
+4. Add `(path, key, Model)` to `tests/test_live.py`; it reports live keys the model lacks.
+
+## Checks
+
+- `pytest` in the direnv shell runs live tests when `HARVEST_TOKEN`/`HARVEST_ACCOUNT` are set (`.privenv`).
+- `nix build --file . checks`: build + offline tests, ruff, nixfmt. Live tests skip in the sandbox.
+- `pyrefly check src tests`.

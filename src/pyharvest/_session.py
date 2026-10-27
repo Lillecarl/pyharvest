@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import AsyncIterator, Mapping
-from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Final
 
@@ -30,29 +29,14 @@ def query(params: Mapping[str, QueryValue]) -> dict[str, str | int]:
             case bool():
                 out[key] = "true" if value else "false"
             case dt.datetime():
+                # A naive datetime would silently take the machine's offset.
+                if value.tzinfo is None:
+                    raise ValueError(f"{key}: datetime needs a timezone")
                 out[key] = value.astimezone(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             case dt.date():
                 out[key] = value.isoformat()
             case Enum():
                 out[key] = str(value.value)
-            case _:
-                out[key] = value
-    return out
-
-
-def body(fields: Mapping[str, object]) -> dict[str, object]:
-    """JSON body for a write, with unset (None) fields left out."""
-    out: dict[str, object] = {}
-    for key, value in fields.items():
-        match value:
-            case None:
-                continue
-            case BaseModel():
-                out[key] = value.model_dump(mode="json", exclude_none=True)
-            case dt.date() | dt.datetime() | Enum():
-                out[key] = query({key: value})[key]
-            case Decimal():
-                out[key] = float(value)
             case _:
                 out[key] = value
     return out
@@ -75,7 +59,7 @@ class Session:
     ) -> httpx.Response:
         # None, not {}: an empty params mapping makes httpx replace the URL's
         # own query, which drops the cursor from links.next.
-        rendered = query(params) if params else None
+        rendered = query(params or {}) or None
         attempt = 0
         while True:
             response = await self.http.request(method, url, params=rendered, json=json)
@@ -102,9 +86,12 @@ class Session:
         method: str,
         url: str,
         model: type[M],
-        *,
-        json: Mapping[str, object] | None = None,
+        payload: BaseModel | None = None,
     ) -> M:
+        json = None
+        if payload is not None:
+            # exclude_unset: a field passed as None is sent as null, to clear it.
+            json = payload.model_dump(mode="json", exclude_unset=True)
         response = await self.request(method, url, json=json)
         return model.model_validate_json(response.content)
 

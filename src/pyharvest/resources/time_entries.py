@@ -2,16 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pyharvest._session import body
 from pyharvest.models.time_entries import TimeEntry
 
 if TYPE_CHECKING:
     import datetime as dt
     from collections.abc import AsyncIterator
-    from decimal import Decimal
 
     from pyharvest._session import Session
-    from pyharvest.models.time_entries import ApprovalStatus, ExternalReferenceInput
+    from pyharvest.models.time_entries import (
+        ApprovalStatus,
+        TimeEntryCreate,
+        TimeEntryUpdate,
+    )
 
 
 class TimeEntries:
@@ -55,73 +57,12 @@ class TimeEntries:
     async def get(self, time_entry_id: int) -> TimeEntry:
         return await self._session.get(f"time_entries/{time_entry_id}", TimeEntry)
 
-    async def create(
-        self,
-        *,
-        project_id: int,
-        task_id: int,
-        spent_date: dt.date,
-        user_id: int | None = None,
-        hours: Decimal | None = None,
-        started_time: str | None = None,
-        ended_time: str | None = None,
-        notes: str | None = None,
-        external_reference: ExternalReferenceInput | None = None,
-    ) -> TimeEntry:
-        """Create a time entry.
+    async def create(self, entry: TimeEntryCreate) -> TimeEntry:
+        return await self._session.send("POST", "time_entries", TimeEntry, entry)
 
-        Pass ``hours`` on accounts that track duration, ``started_time`` and
-        ``ended_time`` on accounts that track start and end times. Leaving
-        both out starts a timer.
-        """
+    async def update(self, time_entry_id: int, changes: TimeEntryUpdate) -> TimeEntry:
         return await self._session.send(
-            "POST",
-            "time_entries",
-            TimeEntry,
-            json=body(
-                {
-                    "project_id": project_id,
-                    "task_id": task_id,
-                    "spent_date": spent_date,
-                    "user_id": user_id,
-                    "hours": hours,
-                    "started_time": started_time,
-                    "ended_time": ended_time,
-                    "notes": notes,
-                    "external_reference": external_reference,
-                }
-            ),
-        )
-
-    async def update(
-        self,
-        time_entry_id: int,
-        *,
-        project_id: int | None = None,
-        task_id: int | None = None,
-        spent_date: dt.date | None = None,
-        hours: Decimal | None = None,
-        started_time: str | None = None,
-        ended_time: str | None = None,
-        notes: str | None = None,
-        external_reference: ExternalReferenceInput | None = None,
-    ) -> TimeEntry:
-        return await self._session.send(
-            "PATCH",
-            f"time_entries/{time_entry_id}",
-            TimeEntry,
-            json=body(
-                {
-                    "project_id": project_id,
-                    "task_id": task_id,
-                    "spent_date": spent_date,
-                    "hours": hours,
-                    "started_time": started_time,
-                    "ended_time": ended_time,
-                    "notes": notes,
-                    "external_reference": external_reference,
-                }
-            ),
+            "PATCH", f"time_entries/{time_entry_id}", TimeEntry, changes
         )
 
     async def delete(self, time_entry_id: int) -> None:
