@@ -15,14 +15,10 @@ import pytest
 from pydantic import BaseModel
 
 from pyharvest import ForbiddenError, Harvest
-from pyharvest.models import (
-    Client,
-    Company,
-    Contact,
-    ReimbursementSettings,
-    TimeEntry,
-    User,
-)
+from pyharvest.models.clients import Client, Contact
+from pyharvest.models.company import Company, ReimbursementSettings
+from pyharvest.models.time_entries import TimeEntry
+from pyharvest.models.users import User
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

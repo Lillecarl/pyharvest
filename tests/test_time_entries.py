@@ -8,8 +8,8 @@ import pytest
 import respx
 
 from pyharvest import Harvest
-from pyharvest.models import (
-    ApprovalStatus,
+from pyharvest.models import ApprovalStatus
+from pyharvest.models.time_entries import (
     ExternalReferenceInput,
     TimeEntry,
     TimeEntryCreate,

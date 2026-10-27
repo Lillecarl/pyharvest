@@ -9,8 +9,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from pyharvest._session import Session
+    from pyharvest.models.base import ApprovalStatus
     from pyharvest.models.time_entries import (
-        ApprovalStatus,
         TimeEntryCreate,
         TimeEntryUpdate,
     )

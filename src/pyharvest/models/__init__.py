@@ -1,82 +1,11 @@
+"""Shared model types. Section models live in ``pyharvest.models.<section>``.
+
+Sections reuse short names (``BudgetBy`` in projects and reports), so they are
+not re-exported flat here.
+"""
+
 from __future__ import annotations
 
-from pyharvest.models.base import HarvestInput, HarvestModel, Open, Ref
-from pyharvest.models.clients import (
-    Client,
-    ClientCreate,
-    ClientUpdate,
-    Contact,
-    ContactCreate,
-    ContactUpdate,
-    InvoiceRecipientStatus,
-)
-from pyharvest.models.company import (
-    Clock,
-    Company,
-    CompanyUpdate,
-    CurrencyCodeDisplay,
-    CurrencySymbolDisplay,
-    EInvoicingEnrollment,
-    EInvoicingProfile,
-    EInvoicingResult,
-    EInvoicingStatus,
-    ReimbursementSettings,
-    ReimbursementSettingsUpdate,
-    TimeFormat,
-    WeekStartDay,
-)
-from pyharvest.models.time_entries import (
-    ApprovalStatus,
-    ExternalReference,
-    ExternalReferenceInput,
-    TimeEntry,
-    TimeEntryClient,
-    TimeEntryCreate,
-    TimeEntryInvoice,
-    TimeEntryProject,
-    TimeEntryTaskAssignment,
-    TimeEntryUpdate,
-    TimeEntryUserAssignment,
-)
-from pyharvest.models.users import User, UserCreate, UserUpdate
+from pyharvest.models.base import ApprovalStatus, HarvestInput, HarvestModel, Open, Ref
 
-__all__ = [
-    "ApprovalStatus",
-    "Client",
-    "ClientCreate",
-    "ClientUpdate",
-    "Clock",
-    "Company",
-    "CompanyUpdate",
-    "Contact",
-    "ContactCreate",
-    "ContactUpdate",
-    "CurrencyCodeDisplay",
-    "CurrencySymbolDisplay",
-    "EInvoicingEnrollment",
-    "EInvoicingProfile",
-    "EInvoicingResult",
-    "EInvoicingStatus",
-    "ExternalReference",
-    "ExternalReferenceInput",
-    "HarvestInput",
-    "HarvestModel",
-    "InvoiceRecipientStatus",
-    "Open",
-    "Ref",
-    "ReimbursementSettings",
-    "ReimbursementSettingsUpdate",
-    "TimeEntry",
-    "TimeEntryClient",
-    "TimeEntryCreate",
-    "TimeEntryInvoice",
-    "TimeEntryProject",
-    "TimeEntryTaskAssignment",
-    "TimeEntryUpdate",
-    "TimeEntryUserAssignment",
-    "TimeFormat",
-    "User",
-    "UserCreate",
-    "UserUpdate",
-    "WeekStartDay",
-]
+__all__ = ["ApprovalStatus", "HarvestInput", "HarvestModel", "Open", "Ref"]

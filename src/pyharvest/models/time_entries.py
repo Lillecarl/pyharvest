@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal
-from enum import StrEnum
 
-from pyharvest.models.base import HarvestInput, HarvestModel, Open, Ref
-
-
-class ApprovalStatus(StrEnum):
-    UNSUBMITTED = "unsubmitted"
-    SUBMITTED = "submitted"
-    APPROVED = "approved"
+from pyharvest.models.base import (
+    ApprovalStatus,
+    HarvestInput,
+    HarvestModel,
+    Open,
+    Ref,
+)
 
 
 class TimeEntryClient(Ref):

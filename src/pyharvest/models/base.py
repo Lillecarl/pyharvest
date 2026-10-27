@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -8,6 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field
 # the enum, new ones stay str instead of failing the whole record. Not a plain
 # `E | str`: smart-mode unions pick str for every value.
 type Open[E] = Annotated[E | str, Field(union_mode="left_to_right")]
+
+
+class ApprovalStatus(StrEnum):
+    """Approval state shared by time entries and expenses."""
+
+    UNSUBMITTED = "unsubmitted"
+    SUBMITTED = "submitted"
+    APPROVED = "approved"
 
 
 class HarvestModel(BaseModel):
