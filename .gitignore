@@ -1,0 +1,28 @@
+# Private local config
+.privrc
+.privenv
+
+# Nix
+result
+result-*
+.direnv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyrefly_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/

@@ -1,0 +1,37 @@
+[project]
+name = "pyharvest"
+version = "0.1.0"
+description = "Async client for the Harvest API v2"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+  "anyio",
+  "httpx",
+  "pydantic",
+]
+
+[project.urls]
+"API documentation" = "https://help.getharvest.com/api-v2/"
+
+[dependency-groups]
+test = [
+  "pytest",
+  "respx",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+extend-select = ["I", "UP", "B", "TID"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"asyncio".msg = "Use anyio."
