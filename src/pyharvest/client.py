@@ -35,10 +35,14 @@ class Harvest:
         user_agent: str,
         base_url: str = BASE_URL,
         max_retries: int = 3,
+        timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         http = httpx.AsyncClient(
             base_url=base_url,
+            # httpx's 5s default is short for a 2000-record page; a live run
+            # timed out on it.
+            timeout=timeout,
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Harvest-Account-Id": account_id,
