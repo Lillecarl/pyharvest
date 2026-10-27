@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Final, Self
 
 import httpx
 
-from pyharvest.models import User
+from pyharvest._session import Session
+from pyharvest.resources import TimeEntries, Users
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -26,9 +28,10 @@ class Harvest:
         account_id: str,
         user_agent: str,
         base_url: str = BASE_URL,
+        max_retries: int = 3,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        self._http = httpx.AsyncClient(
+        http = httpx.AsyncClient(
             base_url=base_url,
             headers={
                 "Authorization": f"Bearer {access_token}",
@@ -36,6 +39,18 @@ class Harvest:
                 "User-Agent": user_agent,
             },
             transport=transport,
+        )
+        self._session = Session(http, max_retries=max_retries)
+        self.time_entries: Final = TimeEntries(self._session)
+        self.users: Final = Users(self._session)
+
+    @classmethod
+    def from_env(cls, *, user_agent: str) -> Self:
+        """Read ``HARVEST_TOKEN`` and ``HARVEST_ACCOUNT`` from the environment."""
+        return cls(
+            access_token=os.environ["HARVEST_TOKEN"],
+            account_id=os.environ["HARVEST_ACCOUNT"],
+            user_agent=user_agent,
         )
 
     async def __aenter__(self) -> Self:
@@ -50,9 +65,4 @@ class Harvest:
         await self.aclose()
 
     async def aclose(self) -> None:
-        await self._http.aclose()
-
-    async def me(self) -> User:
-        response = await self._http.get("users/me")
-        response.raise_for_status()
-        return User.model_validate_json(response.content)
+        await self._session.http.aclose()
