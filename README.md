@@ -32,6 +32,45 @@ iterators that follow pagination for you.
 Not supported yet: expense receipt upload and `POST /v2/imports`. Both need
 multipart requests.
 
+## MCP server
+
+`pyharvest-mcp` serves one Harvest account to an MCP client over stdio. It
+lists your projects and logs, edits and summarises time entries and timers.
+
+Create a personal access token at <https://id.getharvest.com/developers>. The
+same page shows your account ID. The server reads both from the environment:
+
+```sh
+export HARVEST_TOKEN=...
+export HARVEST_ACCOUNT=...
+nix run github:Lillecarl/pyharvest#pyharvest-mcp
+# without flakes:
+nix run --file https://github.com/Lillecarl/pyharvest/archive/main.tar.gz pyharvest-mcp
+```
+
+Claude Code:
+
+```sh
+claude mcp add pyharvest -- nix run github:Lillecarl/pyharvest#pyharvest-mcp
+```
+
+Other clients (`mcpServers` JSON):
+
+```json
+{
+  "mcpServers": {
+    "pyharvest": {
+      "command": "nix",
+      "args": ["run", "github:Lillecarl/pyharvest#pyharvest-mcp"],
+      "env": { "HARVEST_TOKEN": "...", "HARVEST_ACCOUNT": "..." }
+    }
+  }
+}
+```
+
+Leave out `env` when the client inherits a shell that already exports both.
+Write tools change real data.
+
 ## Development
 
 ```sh
