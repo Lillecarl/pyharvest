@@ -100,12 +100,6 @@ class EntryRow(Result):
     is_locked: bool
 
 
-class DayTotal(Result):
-    date: dt.date
-    weekday: str
-    hours: float
-
-
 class TaskTotal(Result):
     project_id: int
     project: str
@@ -116,8 +110,10 @@ class TaskTotal(Result):
 
 class TimeSummary(Result):
     total_hours: float
-    days: list[DayTotal]
-    """Every day in the range, zero-hour days included."""
+    days: dict[dt.date, float]
+    """Hours on each date in the range, 0 included."""
+    short_weekdays: list[dt.date]
+    """Monday to Friday dates under daily_target_hours. Holidays show here too."""
     tasks: list[TaskTotal]
 
 
@@ -175,7 +171,10 @@ def to_row(entry: TimeEntry) -> EntryRow:
 
 
 def summarise(
-    entries: Iterable[TimeEntry], from_date: dt.date, to_date: dt.date
+    entries: Iterable[TimeEntry],
+    from_date: dt.date,
+    to_date: dt.date,
+    daily_target_hours: float,
 ) -> TimeSummary:
     # Decimal sums: float addition turns 0.1 + 0.2 into 0.30000000000000004.
     by_day: defaultdict[dt.date, Decimal] = defaultdict(Decimal)
@@ -187,9 +186,11 @@ def summarise(
     days = [from_date + dt.timedelta(days=n) for n in range(span)]
     return TimeSummary(
         total_hours=float(sum(by_day.values(), Decimal())),
-        days=[
-            DayTotal(date=d, weekday=d.strftime("%a"), hours=float(by_day[d]))
+        days={d: float(by_day[d]) for d in days},
+        short_weekdays=[
+            d
             for d in days
+            if d.weekday() < 5 and by_day[d] < Decimal(str(daily_target_hours))
         ],
         tasks=[
             TaskTotal(
@@ -278,10 +279,12 @@ def create_server(
         from_date: dt.date,
         to_date: dt.date,
         user_id: int | None = None,
+        daily_target_hours: float = 8.0,
     ) -> TimeSummary:
-        """Hours per day and per project task over an inclusive date range.
+        """Hours per date and per project task over an inclusive date range.
 
-        Lists every day, so days with 0 hours show where time is missing.
+        short_weekdays lists the weekdays under daily_target_hours: where time
+        is missing.
         """
         if to_date < from_date:
             raise ToolError("to_date is before from_date")
@@ -289,7 +292,9 @@ def create_server(
             from_=from_date, to=to_date, user_id=user_id
         )
         with reported():
-            return summarise([e async for e in entries], from_date, to_date)
+            return summarise(
+                [e async for e in entries], from_date, to_date, daily_target_hours
+            )
 
     @server.tool(annotations=READ)
     async def get_time_entry(ctx: Context[Harvest], time_entry_id: int) -> TimeEntry:
@@ -359,7 +364,7 @@ def create_server(
         path is relative to /v2/, for example "projects/123",
         "reports/time/projects" or "users/me/project_assignments". params are
         the query parameters the API docs list (dates as YYYY-MM-DD). For more
-        pages, pass page or follow links.next. A member gets 403 on most
+        pages, pass page=next_page from the result. A member gets 403 on most
         admin sections.
         """
         if not API_PATH.fullmatch(path):

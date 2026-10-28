@@ -46,13 +46,11 @@ def test_summarise_lists_empty_days_and_sums_exactly() -> None:
         ],
         dt.date(2024, 3, 1),
         dt.date(2024, 3, 4),
+        daily_target_hours=0.3,
     )
-    assert [(d.weekday, d.hours) for d in summary.days] == [
-        ("Fri", 0.3),
-        ("Sat", 0.0),
-        ("Sun", 1.0),
-        ("Mon", 0.0),
-    ]
+    assert list(summary.days.values()) == [0.3, 0.0, 1.0, 0.0]
+    # Fri meets the 0.3 target exactly; Sat and Sun are not weekdays.
+    assert summary.short_weekdays == [dt.date(2024, 3, 4)]
     assert summary.total_hours == 1.3
     assert [(t.task, t.hours) for t in summary.tasks] == [
         ("Docs", 1.0),
