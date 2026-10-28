@@ -18,6 +18,7 @@ buildPythonPackage (
     src = lib.fileset.toSource {
       root = ../.;
       fileset = lib.fileset.unions [
+        ../LICENSE
         ../pyproject.toml
         ../README.md
         ../src
@@ -29,7 +30,7 @@ buildPythonPackage (
     pythonImportsCheck = [ "pyharvest" ];
 
     meta = attrs.meta // {
-      license = lib.licenses.mit;
+      license = lib.licenses.asl20;
       mainProgram = "pyharvest-mcp";
     };
   }

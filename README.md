@@ -80,3 +80,7 @@ nix develop --file . shell        # or nix-shell, or direnv
 pytest                            # in the shell; live tests run when
                                   # HARVEST_TOKEN and HARVEST_ACCOUNT are set
 ```
+
+## License
+
+Copyright Dynamist AB. Licensed under the [Apache License 2.0](LICENSE).

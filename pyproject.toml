@@ -3,7 +3,8 @@ name = "pyharvest"
 version = "0.1.0"
 description = "Async client for the Harvest API v2"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
   "anyio",
