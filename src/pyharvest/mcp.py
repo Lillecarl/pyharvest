@@ -69,6 +69,7 @@ class Me(Result):
     clock: str
     wants_timestamp_timers: bool
     """True: entries carry started_time/ended_time. False: entries carry hours."""
+    notes_required: bool
 
 
 class AssignedTask(Result):
@@ -136,6 +137,7 @@ def to_me(user: User, company: Company) -> Me:
         week_start_day=company.week_start_day,
         clock=company.clock,
         wants_timestamp_timers=company.wants_timestamp_timers,
+        notes_required=bool(company.day_entry_notes_required),
     )
 
 

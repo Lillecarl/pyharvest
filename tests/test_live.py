@@ -13,9 +13,11 @@ import typing
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from mcp import Client as McpClient
 from pydantic import BaseModel
 
 from pyharvest import ForbiddenError, Harvest
+from pyharvest.mcp import create_server, harvest_from_env
 from pyharvest.models.clients import Client, Contact
 from pyharvest.models.company import Company, ReimbursementSettings
 from pyharvest.models.estimates import Estimate, EstimateItemCategory
@@ -203,3 +205,21 @@ async def test_time_entries_paginate(harvest: Harvest) -> None:
         )
     ]
     assert len(ids) == total == len(set(ids))
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        ("me", {}),
+        ("my_projects", {}),
+        (
+            "time_summary",
+            {"from_date": str(_TODAY - dt.timedelta(days=30)), "to_date": str(_TODAY)},
+        ),
+        ("list_time_entries", {"from_date": str(_TODAY - dt.timedelta(days=7))}),
+    ],
+)
+async def test_mcp_read_tools(tool: str, arguments: dict[str, Any]) -> None:
+    async with McpClient(create_server(harvest_from_env)) as client:
+        result = await client.call_tool(tool, arguments)
+    assert not result.is_error, result.content

@@ -97,6 +97,7 @@ async def test_me_joins_user_and_company(
         "week_start_day": "Monday",
         "clock": "24h",
         "wants_timestamp_timers": False,
+        "notes_required": False,
     }
 
 
