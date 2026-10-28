@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "pyharvest": {
+      "type": "stdio",
+      "command": "nix",
+      "args": ["run", "--file", ".", "pyharvest-mcp"]
+    }
+  }
+}

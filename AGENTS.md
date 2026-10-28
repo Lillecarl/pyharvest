@@ -35,6 +35,15 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 - The dev account is a member: most sections 403 and PTO/approvals/reimbursements are disabled, so those models follow the docs. An admin token run of `tests/test_live.py` validates them.
 - Unverified: PTO `user_ids`/`pto_type_ids` are sent comma-joined (Rails may want `user_ids[]`); detailed report `totals` are dropped by `paginate`.
 
+## MCP server
+
+- `src/pyharvest/mcp.py`, mcp 2.x (`MCPServer`, not v1 `FastMCP`; the pinned nixpkgs has 2.2). `create_server(connect)` takes a `Harvest` factory; tests pass one hitting respx.
+- `.mcp.json` runs `nix run --file . pyharvest-mcp`; an edit reaches Claude Code on server restart (`/mcp`), after a rebuild. That attr skips tests; `pyharvest` runs them.
+- Credentials: inherited env (direnv loads `.privenv`). No `env` block in `.mcp.json`: it is committed.
+- stdout is the protocol: never print. `log_level="WARNING"` keeps httpx request logs off stderr.
+- Tool args reuse `HarvestInput` models, so update keeps unset-vs-null. Mark writes in docstrings and `ToolAnnotations`.
+- Smoke test outside Claude Code: `mcp.Client(StdioServerParameters(command="nix", args=[...], env=dict(os.environ)))`; stdio_client passes a minimal env unless given one.
+
 ## Checks
 
 - `pytest` in the direnv shell runs live tests when `HARVEST_TOKEN`/`HARVEST_ACCOUNT` are set (`.privenv`).
