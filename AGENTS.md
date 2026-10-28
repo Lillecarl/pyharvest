@@ -42,7 +42,7 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 - Credentials: inherited env (direnv loads `.privenv`). No `env` block in `.mcp.json`: it is committed.
 - stdout is the protocol: never print. `log_level="WARNING"` keeps httpx request logs off stderr.
 - Tool args reuse `HarvestInput` models, so update keeps unset-vs-null. Mark writes in docstrings and `ToolAnnotations`.
-- Results cost the caller's context: list/write tools return compact `Result` models (`EntryRow`, `AssignedProject`); full records only from `get_time_entry` and `harvest_get`. Shaping is pure functions (`to_row`, `summarise`), tested without a server. Field docstrings reach the output schema (`use_attribute_docstrings`).
+- Results cost the caller's context: list/write tools return compact `Result` models (`EntryRow`, `AssignedProject`); full records only from `get_time_entry` and `harvest_get`. Shaping is pure functions (`to_row`, `summarise`), tested without a server. Field docstrings reach the output schema (`use_attribute_docstrings`). A field empty on most rows gets `Field(exclude_if=...)`: MCPServer dumps results without `exclude_none`.
 - Wrap Harvest calls in `with reported():`. MCPServer hides any exception text except `ToolError`'s.
 - `harvest_get` is the escape hatch for every other section; `API_PATH` keeps the token on the Harvest host. No generic write tool: writes go through input models.
 - Iterate: edit, `nix build --file . pyharvest-mcp`, then pymux `pane.send` `/mcp reconnect pyharvest` into this session's pane (`tree`, `"here": true`, `no_paste`) and end the turn so it runs.
