@@ -70,6 +70,7 @@ async def test_lists_tools(client: Client) -> None:
         "me",
         "my_projects",
         "restart_timer",
+        "running_timer",
         "stop_timer",
         "time_summary",
         "update_time_entry",
@@ -189,6 +190,25 @@ async def test_update_sends_only_given_fields(
     )
     assert not result.is_error
     assert json.loads(route.calls.last.request.content) == {"notes": None}
+
+
+@pytest.mark.anyio
+async def test_running_timer(client: Client, router: respx.MockRouter) -> None:
+    route = router.get("time_entries").respond(
+        json=fixtures.page("time_entries", [fixtures.time_entry(is_running=True)], None)
+    )
+    result = await client.call_tool("running_timer", {})
+    assert route.calls.last.request.url.params["is_running"] == "true"
+    assert result.structured_content
+    assert result.structured_content["result"]["is_running"] is True
+
+
+@pytest.mark.anyio
+async def test_no_running_timer(client: Client, router: respx.MockRouter) -> None:
+    router.get("time_entries").respond(json=fixtures.page("time_entries", [], None))
+    result = await client.call_tool("running_timer", {})
+    assert not result.is_error
+    assert result.structured_content == {"result": None}
 
 
 @pytest.mark.anyio

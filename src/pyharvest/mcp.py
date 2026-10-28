@@ -343,6 +343,20 @@ def create_server(
             await _harvest(ctx).time_entries.delete(time_entry_id)
         return f"deleted time entry {time_entry_id}"
 
+    @server.tool(annotations=READ)
+    async def running_timer(
+        ctx: Context[Harvest], user_id: int | None = None
+    ) -> EntryRow | None:
+        """The time entry whose timer runs now, or null.
+
+        Without user_id, an admin may get someone else's.
+        """
+        entries = _harvest(ctx).time_entries.list(is_running=True, user_id=user_id)
+        with reported():
+            async for e in entries:
+                return to_row(e)
+        return None
+
     @server.tool(annotations=CHANGE)
     async def stop_timer(ctx: Context[Harvest], time_entry_id: int) -> EntryRow:
         """Stop the running timer on a time entry."""
