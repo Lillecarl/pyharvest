@@ -15,10 +15,18 @@ in
 let
   # Built with the consumer's lib, not the flake's.
   pyproject-nix = import inputs.pyproject-nix { inherit (pkgs) lib; };
-  pyharvest = pkgs.python3Packages.callPackage ./nix/package.nix { inherit pyproject-nix; };
+  # extras passed explicitly: callPackage would fill a name from the package set.
+  pyharvest = pkgs.python3Packages.callPackage ./nix/package.nix {
+    inherit pyproject-nix;
+    extras = [ ];
+  };
+  # The pyharvest build already runs the same tests.
+  pyharvest-mcp = (pyharvest.override { extras = [ "mcp" ]; }).overridePythonAttrs {
+    doCheck = false;
+  };
 in
 {
-  inherit pyharvest;
+  inherit pyharvest pyharvest-mcp;
   default = pyharvest;
 
   shell = pkgs.callPackage ./nix/shell.nix { inherit pyproject-nix pyharvest; };

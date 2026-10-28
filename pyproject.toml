@@ -11,11 +11,18 @@ dependencies = [
   "pydantic",
 ]
 
+[project.optional-dependencies]
+mcp = ["mcp"]
+
+[project.scripts]
+pyharvest-mcp = "pyharvest.mcp:main"
+
 [project.urls]
 "API documentation" = "https://help.getharvest.com/api-v2/"
 
 [dependency-groups]
 test = [
+  "mcp",
   "pytest",
   "respx",
 ]

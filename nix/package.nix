@@ -4,11 +4,12 @@
   buildPythonPackage,
   pytestCheckHook,
   pyproject-nix,
+  extras,
 }:
 
 let
   project = import ./project.nix { inherit pyproject-nix; };
-  attrs = project.renderers.buildPythonPackage { inherit python; };
+  attrs = project.renderers.buildPythonPackage { inherit python extras; };
 in
 buildPythonPackage (
   attrs
@@ -29,6 +30,7 @@ buildPythonPackage (
 
     meta = attrs.meta // {
       license = lib.licenses.mit;
+      mainProgram = "pyharvest-mcp";
     };
   }
 )
