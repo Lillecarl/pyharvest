@@ -37,6 +37,7 @@ async def test_lists_tools(client: Client) -> None:
     assert sorted(tools) == [
         "create_time_entry",
         "delete_time_entry",
+        "get_time_entry",
         "list_time_entries",
         "me",
         "my_project_assignments",
@@ -77,6 +78,13 @@ async def test_list_time_entries_passes_dates(
     assert not result.is_error
     params = route.calls.last.request.url.params
     assert (params["from"], params["to"]) == ("2024-03-01", "2024-03-31")
+
+
+async def test_get_time_entry(client: Client, router: respx.MockRouter) -> None:
+    router.get("time_entries/7").respond(json=fixtures.time_entry(id=7))
+    result = await client.call_tool("get_time_entry", {"time_entry_id": 7})
+    assert result.structured_content
+    assert result.structured_content["id"] == 7
 
 
 async def test_update_sends_only_given_fields(

@@ -82,6 +82,11 @@ def create_server(
         )
         return [e async for e in entries]
 
+    @server.tool(annotations=READ)
+    async def get_time_entry(ctx: Context[Harvest], time_entry_id: int) -> TimeEntry:
+        """One time entry by its id."""
+        return await _harvest(ctx).time_entries.get(time_entry_id)
+
     @server.tool(annotations=CREATE)
     async def create_time_entry(
         ctx: Context[Harvest], entry: TimeEntryCreate
