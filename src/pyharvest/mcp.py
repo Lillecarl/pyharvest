@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Final
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from pyharvest.client import Harvest
 from pyharvest.errors import HarvestError
@@ -77,10 +77,11 @@ class AssignedTask(Result):
     id: int
     name: str
     billable: bool
-    last_used: dt.date | None = None
-    """The user's latest spent date on this task within recent_days."""
-    recent_hours: float = 0.0
-    """The user's hours on this task within recent_days."""
+    # Left out when unused: most tasks are, and each null costs context.
+    last_used: dt.date | None = Field(default=None, exclude_if=lambda v: v is None)
+    """The user's latest spent date on this task within recent_days. Absent: unused."""
+    recent_hours: float = Field(default=0.0, exclude_if=lambda v: not v)
+    """The user's hours on this task within recent_days. Absent: 0."""
 
 
 class AssignedProject(Result):

@@ -119,15 +119,8 @@ async def test_my_projects_drops_inactive(
                 "name": "Engine",
                 "code": None,
                 "client": "ABC Corp",
-                "tasks": [
-                    {
-                        "id": 4,
-                        "name": "Programming",
-                        "billable": True,
-                        "last_used": None,
-                        "recent_hours": 0.0,
-                    }
-                ],
+                # Unused: last_used and recent_hours are left out.
+                "tasks": [{"id": 4, "name": "Programming", "billable": True}],
             }
         ]
     }
