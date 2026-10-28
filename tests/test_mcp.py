@@ -111,7 +111,7 @@ async def test_my_projects_drops_inactive(
     router.get("users/me/project_assignments").respond(
         json=fixtures.page("project_assignments", [active, inactive], None)
     )
-    result = await client.call_tool("my_projects", {})
+    result = await client.call_tool("my_projects", {"recent_days": 0})
     assert result.structured_content == {
         "result": [
             {
@@ -119,10 +119,57 @@ async def test_my_projects_drops_inactive(
                 "name": "Engine",
                 "code": None,
                 "client": "ABC Corp",
-                "tasks": [{"id": 4, "name": "Programming", "billable": True}],
+                "tasks": [
+                    {
+                        "id": 4,
+                        "name": "Programming",
+                        "billable": True,
+                        "last_used": None,
+                        "recent_hours": 0.0,
+                    }
+                ],
             }
         ]
     }
+
+
+@pytest.mark.anyio
+async def test_my_projects_puts_recent_use_first(
+    client: Client, router: respx.MockRouter
+) -> None:
+    unused = fixtures_user_details.project_assignment()
+    used = fixtures_user_details.project_assignment(
+        id=31, project={"id": 8, "name": "Docs", "code": None, "is_billable": True}
+    )
+    router.get("users/me/project_assignments").respond(
+        json=fixtures.page("project_assignments", [unused, used], None)
+    )
+    router.get("users/me").respond(json=fixtures.user())
+    route = router.get("time_entries").respond(
+        json=fixtures.page(
+            "time_entries",
+            [
+                fixtures.time_entry(
+                    spent_date="2024-03-02",
+                    hours=0.1,
+                    project={"id": 8, "name": "Docs"},
+                ),
+                fixtures.time_entry(
+                    spent_date="2024-03-05",
+                    hours=0.2,
+                    project={"id": 8, "name": "Docs"},
+                ),
+            ],
+            None,
+        )
+    )
+    result = await client.call_tool("my_projects", {})
+    assert route.calls.last.request.url.params["user_id"] == str(fixtures.user()["id"])
+    assert result.structured_content
+    first, second = result.structured_content["result"]
+    assert (first["id"], second["id"]) == (8, 3)
+    assert first["tasks"][0]["last_used"] == "2024-03-05"
+    assert first["tasks"][0]["recent_hours"] == 0.3
 
 
 @pytest.mark.anyio

@@ -15,6 +15,7 @@ import os
 import re
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Final
 
@@ -76,6 +77,10 @@ class AssignedTask(Result):
     id: int
     name: str
     billable: bool
+    last_used: dt.date | None = None
+    """The user's latest spent date on this task within recent_days."""
+    recent_hours: float = 0.0
+    """The user's hours on this task within recent_days."""
 
 
 class AssignedProject(Result):
@@ -84,6 +89,13 @@ class AssignedProject(Result):
     code: str | None
     client: str
     tasks: list[AssignedTask]
+    """Most recently used first."""
+
+
+@dataclass(slots=True)
+class Usage:
+    last_used: dt.date
+    hours: Decimal = Decimal()
 
 
 class EntryRow(Result):
@@ -141,18 +153,60 @@ def to_me(user: User, company: Company) -> Me:
     )
 
 
-def to_project(assignment: ProjectAssignment) -> AssignedProject:
-    return AssignedProject(
-        id=assignment.project.id,
-        name=assignment.project.name,
-        code=assignment.project.code,
-        client=assignment.client.name,
-        tasks=[
-            AssignedTask(id=t.task.id, name=t.task.name, billable=t.billable)
-            for t in assignment.task_assignments
-            if t.is_active
-        ],
-    )
+def task_usage(entries: Iterable[TimeEntry]) -> dict[tuple[int, int], Usage]:
+    """Latest date and hour sum per (project id, task id)."""
+    usage: dict[tuple[int, int], Usage] = {}
+    for e in entries:
+        u = usage.setdefault((e.project.id, e.task.id), Usage(last_used=e.spent_date))
+        u.last_used = max(u.last_used, e.spent_date)
+        u.hours += e.hours
+    return usage
+
+
+def _task_recency(task: AssignedTask) -> dt.date:
+    return task.last_used or dt.date.min
+
+
+def _project_recency(project: AssignedProject) -> dt.date:
+    return max(map(_task_recency, project.tasks), default=dt.date.min)
+
+
+def to_projects(
+    assignments: Iterable[ProjectAssignment],
+    usage: dict[tuple[int, int], Usage],
+) -> list[AssignedProject]:
+    """Active assignments, most recently used project and task first.
+
+    Unused ones keep Harvest's order: sorted() is stable.
+    """
+    projects: list[AssignedProject] = []
+    for a in assignments:
+        if not a.is_active:
+            continue
+        tasks: list[AssignedTask] = []
+        for t in a.task_assignments:
+            if not t.is_active:
+                continue
+            u = usage.get((a.project.id, t.task.id))
+            tasks.append(
+                AssignedTask(
+                    id=t.task.id,
+                    name=t.task.name,
+                    billable=t.billable,
+                    last_used=u.last_used if u else None,
+                    recent_hours=float(u.hours) if u else 0.0,
+                )
+            )
+        projects.append(
+            AssignedProject(
+                id=a.project.id,
+                name=a.project.name,
+                code=a.project.code,
+                client=a.client.name,
+                tasks=sorted(tasks, key=_task_recency, reverse=True),
+            )
+        )
+    return sorted(projects, key=_project_recency, reverse=True)
 
 
 def to_row(entry: TimeEntry) -> EntryRow:
@@ -247,14 +301,24 @@ def create_server(
             return to_me(await harvest.users.me(), await harvest.company.get())
 
     @server.tool(annotations=READ)
-    async def my_projects(ctx: Context[Harvest]) -> list[AssignedProject]:
-        """Active projects the token's user may log time to, with active tasks."""
+    async def my_projects(
+        ctx: Context[Harvest], recent_days: int = 90
+    ) -> list[AssignedProject]:
+        """Active projects the token's user may log time to, with active tasks.
+
+        Most recently used first, with each task's use over the last
+        recent_days: the likely project and task for a new entry. 0 skips that.
+        """
+        harvest = _harvest(ctx)
         with reported():
-            return [
-                to_project(a)
-                async for a in _harvest(ctx).user_project_assignments.me()
-                if a.is_active
-            ]
+            usage: dict[tuple[int, int], Usage] = {}
+            if recent_days > 0:
+                user = await harvest.users.me()
+                since = dt.date.today() - dt.timedelta(days=recent_days)
+                entries = harvest.time_entries.list(from_=since, user_id=user.id)
+                usage = task_usage([e async for e in entries])
+            assignments = harvest.user_project_assignments.me()
+            return to_projects([a async for a in assignments], usage)
 
     @server.tool(annotations=READ)
     async def list_time_entries(
