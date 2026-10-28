@@ -30,7 +30,7 @@
     in
     {
       packages = forAllSystems (p: {
-        inherit (p) default pyharvest;
+        inherit (p) default pyharvest pyharvest-mcp;
       });
       devShells = forAllSystems (p: {
         default = p.shell;
