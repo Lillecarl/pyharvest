@@ -4,6 +4,11 @@
       "type": "stdio",
       "command": "nix",
       "args": ["run", "--file", ".", "pyharvest-mcp"]
+    },
+    "pymux": {
+      "type": "stdio",
+      "command": "nix",
+      "args": ["run", "--file", "${HOME}/Code/pyterm", "pymux-mcp"]
     }
   }
 }
