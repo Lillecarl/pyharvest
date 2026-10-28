@@ -312,8 +312,8 @@ def create_server(
 
         Give hours on a duration account, started_time/ended_time on a
         timestamp one (see me). With neither, Harvest starts a timer on the
-        new entry. Stops at the first failure and reports it; the entries
-        created before it stay.
+        new entry and stops the user's running one. Stops at the first
+        failure and reports it; the entries created before it stay.
         """
         harvest = _harvest(ctx)
         created: list[EntryRow] = []
@@ -349,6 +349,7 @@ def create_server(
     ) -> EntryRow | None:
         """The time entry whose timer runs now, or null.
 
+        Starting a timer stops the running one, so a user has at most one.
         Without user_id, an admin may get someone else's.
         """
         entries = _harvest(ctx).time_entries.list(is_running=True, user_id=user_id)
