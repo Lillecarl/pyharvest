@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import email
 import json
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
 
+from pyharvest import Upload
 from pyharvest.models import ApprovalStatus
 from pyharvest.models.expenses import (
     Expense,
@@ -19,6 +21,8 @@ from pyharvest.resources.expenses import ExpenseCategories, Expenses
 from . import fixtures, fixtures_expenses
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import respx
 
     from pyharvest import Harvest
@@ -77,6 +81,68 @@ async def test_create_sends_only_set_fields(
         "spent_date": "2024-03-01",
         "total_cost": 13.59,
     }
+
+
+@pytest.mark.anyio
+async def test_create_with_receipt_sends_multipart(
+    harvest: Harvest, router: respx.MockRouter
+) -> None:
+    route = router.post("expenses").respond(201, json=fixtures_expenses.expense())
+
+    await Expenses(harvest._session).create(
+        ExpenseCreate(
+            project_id=3,
+            expense_category_id=7,
+            spent_date=dt.date(2024, 3, 1),
+            total_cost=13.59,
+            billable=False,
+        ),
+        receipt=Upload("kvitto.pdf", b"%PDF-1.4", "application/pdf"),
+    )
+
+    request = route.calls.last.request
+    assert request.headers["Content-Type"].startswith("multipart/form-data")
+    form = email.message_from_bytes(
+        b"Content-Type: "
+        + request.headers["Content-Type"].encode()
+        + b"\r\n\r\n"
+        + request.content
+    )
+    parts = {p.get_param("name", header="content-disposition"): p for p in form.walk()}
+    assert {
+        k: parts[k].get_payload() for k in ("project_id", "total_cost", "billable")
+    } == {
+        "project_id": "3",
+        "total_cost": "13.59",
+        "billable": "false",
+    }
+    assert parts["receipt"].get_filename() == "kvitto.pdf"
+    assert parts["receipt"].get_content_type() == "application/pdf"
+    assert parts["receipt"].get_payload(decode=True) == b"%PDF-1.4"
+
+
+@pytest.mark.anyio
+async def test_receipt_with_null_field_raises(
+    harvest: Harvest, router: respx.MockRouter
+) -> None:
+    router.patch("expenses/500").respond(json=fixtures_expenses.expense())
+
+    with pytest.raises(ValueError, match="notes"):
+        await Expenses(harvest._session).update(
+            500,
+            ExpenseUpdate(notes=None),
+            receipt=Upload("kvitto.pdf", b"%PDF-1.4", "application/pdf"),
+        )
+
+
+@pytest.mark.anyio
+async def test_upload_read_guesses_type(tmp_path: Path) -> None:
+    path = tmp_path / "kvitto.pdf"
+    path.write_bytes(b"%PDF-1.4")
+
+    assert await Upload.read(path) == Upload(
+        "kvitto.pdf", b"%PDF-1.4", "application/pdf"
+    )
 
 
 @pytest.mark.anyio

@@ -77,7 +77,7 @@ class Expense(HarvestModel):
 
 class ExpenseCreate(HarvestInput):
     """Pass ``units`` for a unit-based expense category, ``total_cost``
-    otherwise. Receipt uploads need multipart and are not supported."""
+    otherwise."""
 
     project_id: int
     expense_category_id: int

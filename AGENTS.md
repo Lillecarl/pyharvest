@@ -31,7 +31,7 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 
 ## Known gaps
 
-- Multipart is unsupported: expense receipt upload, `POST /v2/imports`.
+- Multipart: `send(..., files=)` posts the payload as form fields (no null). Expense receipts use it; `POST /v2/imports` does not yet.
 - The dev account is a member: most sections 403 and PTO/approvals/reimbursements are disabled, so those models follow the docs. An admin token run of `tests/test_live.py` validates them.
 - Unverified: PTO `user_ids`/`pto_type_ids` are sent comma-joined (Rails may want `user_ids[]`); detailed report `totals` are dropped by `paginate`.
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from importlib.metadata import version
 
+from pyharvest._session import Upload
 from pyharvest.client import BASE_URL, Harvest
 from pyharvest.errors import (
     BadRequestError,
@@ -25,6 +26,7 @@ __all__ = [
     "ServerError",
     "UnauthorizedError",
     "UnprocessableError",
+    "Upload",
     "__version__",
 ]
 

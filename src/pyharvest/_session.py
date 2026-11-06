@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import datetime as dt
+import mimetypes
+import os
 from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Final
 
@@ -17,6 +20,43 @@ if TYPE_CHECKING:
 type QueryValue = str | int | bool | dt.date | dt.datetime | Enum | None
 
 MAX_PER_PAGE: Final = 2000
+
+
+@dataclass(frozen=True, slots=True)
+class Upload:
+    """A file sent as one part of a multipart request."""
+
+    file_name: str
+    content: bytes
+    content_type: str
+
+    @classmethod
+    async def read(cls, path: str | os.PathLike[str]) -> Upload:
+        """Read a file, with its media type guessed from the extension."""
+        file = anyio.Path(path)
+        content_type, _ = mimetypes.guess_type(file.name)
+        return cls(
+            file.name,
+            await file.read_bytes(),
+            content_type or "application/octet-stream",
+        )
+
+
+def form(fields: Mapping[str, object]) -> dict[str, str]:
+    """Render a dumped payload as multipart form fields."""
+    out: dict[str, str] = {}
+    for key, value in fields.items():
+        match value:
+            case None:
+                # A form part has no null; "" would set an empty string.
+                raise ValueError(f"{key}: multipart cannot send null")
+            case bool():
+                out[key] = "true" if value else "false"
+            case str() | int() | float():
+                out[key] = str(value)
+            case _:
+                raise TypeError(f"{key}: multipart cannot send {type(value).__name__}")
+    return out
 
 
 def query(params: Mapping[str, QueryValue]) -> dict[str, str | int]:
@@ -56,13 +96,22 @@ class Session:
         *,
         params: Mapping[str, QueryValue] | None = None,
         json: Mapping[str, object] | None = None,
+        data: Mapping[str, str] | None = None,
+        files: Mapping[str, Upload] | None = None,
     ) -> httpx.Response:
         # None, not {}: an empty params mapping makes httpx replace the URL's
         # own query, which drops the cursor from links.next.
         rendered = query(params or {}) or None
+        parts = (
+            {k: (f.file_name, f.content, f.content_type) for k, f in files.items()}
+            if files
+            else None
+        )
         attempt = 0
         while True:
-            response = await self.http.request(method, url, params=rendered, json=json)
+            response = await self.http.request(
+                method, url, params=rendered, json=json, data=data, files=parts
+            )
             if response.status_code == 429 and attempt < self.max_retries:
                 attempt += 1
                 await anyio.sleep(float(response.headers.get("Retry-After", "1")))
@@ -87,12 +136,20 @@ class Session:
         url: str,
         model: type[M],
         payload: BaseModel | None = None,
+        *,
+        files: Mapping[str, Upload] | None = None,
     ) -> M:
-        json = None
+        """With ``files``, the payload goes as form fields of a multipart body."""
+        body = None
         if payload is not None:
             # exclude_unset: a field passed as None is sent as null, to clear it.
-            json = payload.model_dump(mode="json", exclude_unset=True)
-        response = await self.request(method, url, json=json)
+            body = payload.model_dump(mode="json", exclude_unset=True)
+        if files:
+            response = await self.request(
+                method, url, data=form(body or {}), files=files
+            )
+        else:
+            response = await self.request(method, url, json=body)
         return model.model_validate_json(response.content)
 
     async def delete(self, url: str) -> None:

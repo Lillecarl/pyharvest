@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     import datetime as dt
     from collections.abc import AsyncIterator
 
-    from pyharvest._session import Session
+    from pyharvest._session import Session, Upload
     from pyharvest.models.base import ApprovalStatus
     from pyharvest.models.expenses import (
         ExpenseCategoryCreate,
@@ -16,6 +16,10 @@ if TYPE_CHECKING:
         ExpenseCreate,
         ExpenseUpdate,
     )
+
+
+def _receipt(receipt: Upload | None) -> dict[str, Upload] | None:
+    return None if receipt is None else {"receipt": receipt}
 
 
 class Expenses:
@@ -53,12 +57,24 @@ class Expenses:
     async def get(self, expense_id: int) -> Expense:
         return await self._session.get(f"expenses/{expense_id}", Expense)
 
-    async def create(self, expense: ExpenseCreate) -> Expense:
-        return await self._session.send("POST", "expenses", Expense, expense)
-
-    async def update(self, expense_id: int, changes: ExpenseUpdate) -> Expense:
+    async def create(
+        self, expense: ExpenseCreate, *, receipt: Upload | None = None
+    ) -> Expense:
+        """A receipt makes the request multipart, which cannot send null."""
         return await self._session.send(
-            "PATCH", f"expenses/{expense_id}", Expense, changes
+            "POST", "expenses", Expense, expense, files=_receipt(receipt)
+        )
+
+    async def update(
+        self, expense_id: int, changes: ExpenseUpdate, *, receipt: Upload | None = None
+    ) -> Expense:
+        """A receipt replaces the attached one, and cannot be sent with a null."""
+        return await self._session.send(
+            "PATCH",
+            f"expenses/{expense_id}",
+            Expense,
+            changes,
+            files=_receipt(receipt),
         )
 
     async def delete(self, expense_id: int) -> None:

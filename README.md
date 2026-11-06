@@ -29,8 +29,10 @@ Each API section is a flat attribute on `Harvest`, named after its doc page
 models are in `pyharvest.models.<section>`. List methods return async
 iterators that follow pagination for you.
 
-Not supported yet: expense receipt upload and `POST /v2/imports`. Both need
-multipart requests.
+To attach a receipt, pass
+`receipt=await pyharvest.Upload.read(path)` to `harvest.expenses.create` or
+`update`. Not supported yet: `POST /v2/imports`, which needs a multipart
+upload too.
 
 ## MCP server
 
