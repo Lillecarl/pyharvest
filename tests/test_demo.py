@@ -50,6 +50,15 @@ from pyharvest.models.projects import (
 from pyharvest.models.roles import CustomRoleCreate, RoleCreate
 from pyharvest.models.tasks import TaskCreate, TaskUpdate
 from pyharvest.models.time_entries import TimeEntry, TimeEntryCreate
+from pyharvest.models.user_details import (
+    BillableRate,
+    CostRate,
+    ProjectAssignment,
+    Teammate,
+    TeammatesUpdate,
+    UserRateCreate,
+)
+from pyharvest.models.users import UserCreate, UserUpdate
 
 from . import livecheck
 
@@ -319,6 +328,58 @@ async def test_submit_approve_withdraw(demo: Harvest, seed: Seed) -> None:
     assert withdrawn.approval_status == ApprovalStatus.SUBMITTED
     same_day = await demo.time_entries.get(seed.entries[0].id)
     assert same_day.approval_status == ApprovalStatus.SUBMITTED
+
+
+async def test_user_round_trip(demo: Harvest, seed: Seed) -> None:
+    # Harvest mails an invitation: plus-address the demo owner's own inbox.
+    owner = await demo.users.me()
+    local, domain = owner.email.split("@")
+    tag = uuid.uuid4().hex[:8]
+    user = await demo.users.create(
+        UserCreate(
+            first_name=PREFIX,
+            last_name=f"user {tag}",
+            email=f"{local}+{PREFIX}-{tag}@{domain}",
+            # Accounts on Harvest's new roles refuse "manager".
+            access_roles=["project_manager"],
+        )
+    )
+    try:
+        changed = await demo.users.update(
+            user.id, UserUpdate(weekly_capacity=72000, roles=["Tester"])
+        )
+        assert (changed.weekly_capacity, list(changed.roles)) == (72000, ["Tester"])
+
+        await demo.user_billable_rates.create(
+            user.id, UserRateCreate(amount=950, start_date=WEEK)
+        )
+        await demo.user_cost_rates.create(user.id, UserRateCreate(amount=400))
+        for path, key, model in [
+            (f"users/{user.id}/billable_rates", "billable_rates", BillableRate),
+            (f"users/{user.id}/cost_rates", "cost_rates", CostRate),
+        ]:
+            await livecheck.check_list(demo, path, key, model, {})
+
+        teammates = await demo.user_teammates.update(
+            user.id, TeammatesUpdate(teammate_ids=[owner.id])
+        )
+        assert [t.id for t in teammates] == [owner.id]
+        await livecheck.check_list(
+            demo, f"users/{user.id}/teammates", "teammates", Teammate, {}
+        )
+
+        await demo.user_assignments.create(
+            seed.project_id, UserAssignmentCreate(user_id=user.id)
+        )
+        await livecheck.check_list(
+            demo,
+            f"users/{user.id}/project_assignments",
+            "project_assignments",
+            ProjectAssignment,
+            {},
+        )
+    finally:
+        await demo.users.delete(user.id)
 
 
 async def test_task_round_trip(demo: Harvest) -> None:

@@ -36,6 +36,7 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 - The dev account is a member: most sections 403 and PTO/approvals/reimbursements are disabled, so those models follow the docs. An admin token run of `tests/test_live.py` validates them.
 - Unverified: PTO `user_ids`/`pto_type_ids` are sent comma-joined (Rails may want `user_ids[]`). The demo account needs Time Off turned on to settle it.
 - Detailed report `totals` come from separate `*_detailed_totals` calls (one `per_page=1` GET): `paginate` yields rows only.
+- Accounts on Harvest's new roles refuse access role `manager`; they take `member`, `project_manager`, `people_admin`, `accounting`, `executive_manager`, `administrator`. `access_roles` stays `str`.
 - Time has no approve endpoint. `expenses.approve` approves the expense and the submitter's time on that project and day; `withdraw` returns both to submitted.
 
 ## MCP server
