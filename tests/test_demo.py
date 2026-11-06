@@ -21,9 +21,16 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import anyio
 import pytest
 
-from pyharvest import Attachment, Harvest, NotFoundError, RateLimitedError
+from pyharvest import (
+    Attachment,
+    Harvest,
+    HarvestError,
+    NotFoundError,
+    RateLimitedError,
+)
 from pyharvest.client import read_env_file
 from pyharvest.models.approvals import ApprovalBucket, ApprovalSubmit
 from pyharvest.models.base import ApprovalStatus
@@ -55,6 +62,15 @@ from pyharvest.models.projects import (
     ProjectCreate,
     TaskAssignmentCreate,
     UserAssignmentCreate,
+)
+from pyharvest.models.reports import (
+    ExportFormat,
+    ExportStatus,
+    ReportExportCreate,
+    ReportGenerate,
+    SavedReport,
+    SavedReportCreate,
+    SavedReportUpdate,
 )
 from pyharvest.models.roles import CustomRoleCreate, RoleCreate
 from pyharvest.models.tasks import TaskCreate, TaskUpdate
@@ -147,6 +163,7 @@ SWEEP = [
     ("estimates", "estimates", "subject"),
     ("invoices", "invoices", "subject"),
     ("custom_roles", "custom_roles", "name"),
+    ("reports/saved", "saved_reports", "name"),
     ("roles", "roles", "name"),
     ("estimate_item_categories", "estimate_item_categories", "name"),
     ("invoice_item_categories", "invoice_item_categories", "name"),
@@ -464,6 +481,79 @@ async def test_timer_stop_restart(demo: Harvest, seed: Seed) -> None:
         assert not (await demo.time_entries.stop(timer.id)).is_running
     finally:
         await demo.time_entries.delete(timer.id)
+
+
+TIME_BY_PROJECT: dict[str, Any] = {
+    "subject": "time",
+    "view": "summary",
+    "levels": [{"kind": "column", "id": "project"}],
+    "columns": ["hours"],
+}
+
+
+async def test_saved_report_round_trip(demo: Harvest, seed: Seed) -> None:
+    generated = await demo.reports.generate(
+        ReportGenerate(configuration=TIME_BY_PROJECT, limit=500)
+    )
+    assert generated.report_id is None
+    # Measured: a level column's id is "level_0_col_project", not the
+    # documented "project".
+    assert [c.id for c in generated.columns][-1] == "hours"
+
+    report = await demo.reports.saved_create(
+        SavedReportCreate(name=name("report"), configuration=TIME_BY_PROJECT)
+    )
+    try:
+        await livecheck.check_list(
+            demo, "reports/saved", "saved_reports", SavedReport, {}
+        )
+        ran = await demo.reports.run_saved(report.id, limit=500)
+        assert ran.report_id == report.id
+        assert ran.rows == generated.rows
+
+        # A configuration replaces the stored one whole: send back what was read.
+        changed = await demo.reports.saved_update(
+            report.id,
+            SavedReportUpdate(
+                description="by project",
+                configuration={**report.configuration, "include_zero_values": True},
+                lock_version=report.lock_version,
+            ),
+        )
+        assert changed.lock_version > report.lock_version
+        assert changed.configuration["include_zero_values"] is True
+        with pytest.raises(HarvestError) as stale:
+            await demo.reports.saved_update(
+                report.id,
+                SavedReportUpdate(
+                    name=name("report"), lock_version=report.lock_version
+                ),
+            )
+        assert stale.value.status == 409
+    finally:
+        deleted = await demo.reports.saved_delete(report.id)
+    assert deleted.id == report.id
+
+
+async def test_report_export_download(demo: Harvest, seed: Seed) -> None:
+    export = await demo.reports.export_create(
+        ReportExportCreate(
+            type="detailed_time_report",
+            export_format=ExportFormat.CSV,
+            params={
+                "from": WEEK.isoformat(),
+                "till": (WEEK + dt.timedelta(days=6)).isoformat(),
+            },
+        )
+    )
+    with anyio.fail_after(120):
+        while export.status != ExportStatus.COMPLETE:
+            await anyio.sleep(2)
+            export = await demo.reports.export_get(export.id)
+    assert export.download_url
+    csv = (await demo.reports.export_download(export.id)).decode()
+    for entry in seed.entries:
+        assert entry.notes and entry.notes in csv
 
 
 @contextmanager
