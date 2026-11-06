@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING
 
 from pyharvest.models.reports import (
     DetailedExpenseRow,
+    DetailedExpenseTotalsPage,
     DetailedTimeRow,
+    DetailedTimeTotalsPage,
     ExpensesByCategory,
     ExpensesByClient,
     ExpensesByProject,
@@ -23,13 +25,15 @@ from pyharvest.models.reports import (
 
 if TYPE_CHECKING:
     import datetime as dt
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Sequence
 
     from pyharvest._session import Session
     from pyharvest.models.base import ApprovalStatus
     from pyharvest.models.reports import (
         DetailedExpenseGroupBy,
+        DetailedExpenseTotal,
         DetailedTimeGroupBy,
+        DetailedTimeTotals,
         GeneratedReport,
         ProfitabilityGroupBy,
         ReportExportCreate,
@@ -125,7 +129,7 @@ class Reports:
         approval_status: ApprovalStatus | None = None,
         group_by: DetailedTimeGroupBy | None = None,
     ) -> AsyncIterator[DetailedTimeRow]:
-        """Entry-level rows. The response's ``totals`` are not returned."""
+        """Entry-level rows. ``time_detailed_totals`` gives the sums."""
         return self._session.paginate(
             "reports/time/detailed",
             "results",
@@ -142,6 +146,36 @@ class Reports:
                 "group_by": group_by,
             },
         )
+
+    async def time_detailed_totals(
+        self,
+        *,
+        from_: dt.date,
+        to: dt.date,
+        client_id: int | None = None,
+        project_id: int | None = None,
+        task_id: int | None = None,
+        user_id: int | None = None,
+        is_billed: bool | None = None,
+        approval_status: ApprovalStatus | None = None,
+    ) -> DetailedTimeTotals:
+        """The sums over every row ``time_detailed`` would yield."""
+        page = await self._session.get(
+            "reports/time/detailed",
+            DetailedTimeTotalsPage,
+            params={
+                "from": from_,
+                "to": to,
+                "client_id": client_id,
+                "project_id": project_id,
+                "task_id": task_id,
+                "user_id": user_id,
+                "is_billed": is_billed,
+                "approval_status": approval_status,
+                "per_page": 1,
+            },
+        )
+        return page.totals
 
     # Expense reports
 
@@ -198,7 +232,7 @@ class Reports:
         approval_status: ApprovalStatus | None = None,
         group_by: DetailedExpenseGroupBy | None = None,
     ) -> AsyncIterator[DetailedExpenseRow]:
-        """Expense-level rows. The response's ``totals`` are not returned."""
+        """Expense-level rows. ``expenses_detailed_totals`` gives the sums."""
         return self._session.paginate(
             "reports/expenses/detailed",
             "results",
@@ -215,6 +249,37 @@ class Reports:
                 "group_by": group_by,
             },
         )
+
+    async def expenses_detailed_totals(
+        self,
+        *,
+        from_: dt.date,
+        to: dt.date,
+        client_id: int | None = None,
+        project_id: int | None = None,
+        expense_category_id: int | None = None,
+        user_id: int | None = None,
+        is_billed: bool | None = None,
+        approval_status: ApprovalStatus | None = None,
+    ) -> Sequence[DetailedExpenseTotal]:
+        """The sums over every row ``expenses_detailed`` would yield, per
+        currency."""
+        page = await self._session.get(
+            "reports/expenses/detailed",
+            DetailedExpenseTotalsPage,
+            params={
+                "from": from_,
+                "to": to,
+                "client_id": client_id,
+                "project_id": project_id,
+                "expense_category_id": expense_category_id,
+                "user_id": user_id,
+                "is_billed": is_billed,
+                "approval_status": approval_status,
+                "per_page": 1,
+            },
+        )
+        return page.totals
 
     # Other reports
 

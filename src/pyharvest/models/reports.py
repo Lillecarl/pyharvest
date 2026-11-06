@@ -217,6 +217,28 @@ class DetailedTimeRow(HarvestModel):
     user_name: str
 
 
+class DetailedTimeTotals(HarvestModel):
+    """The ``totals`` of a detailed time report, over every page."""
+
+    total_hours: Decimal
+    billable_hours: Decimal
+
+
+class DetailedExpenseTotal(HarvestModel):
+    """One currency's sum in a detailed expense report, over every page."""
+
+    currency: str
+    total_amount: Decimal
+
+
+class DetailedTimeTotalsPage(HarvestModel):
+    totals: DetailedTimeTotals
+
+
+class DetailedExpenseTotalsPage(HarvestModel):
+    totals: list[DetailedExpenseTotal]
+
+
 class DetailedExpenseRow(HarvestModel):
     id: int
     spent_date: dt.date

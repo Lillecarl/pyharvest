@@ -54,6 +54,35 @@ async def test_time_projects_renders_iso_dates(
 
 
 @pytest.mark.anyio
+async def test_detailed_totals_read_one_row_page(
+    harvest: Harvest, router: respx.MockRouter
+) -> None:
+    # Shapes seen on a live trial account, 2026-11-06.
+    time_route = router.get("reports/time/detailed").respond(
+        json={
+            **fixtures.page("results", [fixtures.detailed_time_row()], None),
+            "totals": {"total_hours": 2.0, "billable_hours": 0.0},
+        }
+    )
+    router.get("reports/expenses/detailed").respond(
+        json={
+            **fixtures.page("results", [], None),
+            "totals": [{"currency": "SEK", "total_amount": 14.75}],
+        }
+    )
+    reports = Reports(harvest._session)
+    day = dt.date(2024, 3, 1)
+
+    time = await reports.time_detailed_totals(from_=day, to=day, project_id=3)
+    [expense] = await reports.expenses_detailed_totals(from_=day, to=day)
+
+    assert (time.total_hours, time.billable_hours) == (Decimal("2.0"), Decimal(0))
+    assert (expense.currency, expense.total_amount) == ("SEK", Decimal("14.75"))
+    params = time_route.calls.last.request.url.params
+    assert (params["per_page"], params["project_id"]) == ("1", "3")
+
+
+@pytest.mark.anyio
 async def test_time_detailed_follows_pages(
     harvest: Harvest, router: respx.MockRouter
 ) -> None:
