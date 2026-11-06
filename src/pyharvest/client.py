@@ -52,9 +52,30 @@ from pyharvest.resources import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from types import TracebackType
 
 BASE_URL: Final = "https://api.harvestapp.com/v2/"
+
+
+def read_env_file(path: str | os.PathLike[str]) -> dict[str, str]:
+    """Parse ``KEY=VALUE`` lines: blank lines, ``#`` comments, an optional
+    ``export`` and one layer of matching quotes. No interpolation."""
+    values: dict[str, str] = {}
+    with open(path, encoding="utf-8") as f:
+        for number, raw in enumerate(f, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            key, sep, value = line.removeprefix("export ").partition("=")
+            if not sep:
+                # The line itself stays out of the message: it may hold a token.
+                raise ValueError(f"{path}:{number}: not KEY=VALUE")
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            values[key.strip()] = value
+    return values
 
 
 class Harvest:
@@ -133,10 +154,17 @@ class Harvest:
 
     @classmethod
     def from_env(cls, *, user_agent: str) -> Self:
-        """Read ``HARVEST_TOKEN`` and ``HARVEST_ACCOUNT`` from the environment."""
+        """Read ``HARVEST_TOKEN`` and ``HARVEST_ACCOUNT``.
+
+        With ``HARVEST_ENV_FILE`` set, both come from that dotenv file only,
+        never from the environment: a key missing there raises.
+        """
+        source: Mapping[str, str] = os.environ
+        if path := os.environ.get("HARVEST_ENV_FILE"):
+            source = read_env_file(path)
         return cls(
-            access_token=os.environ["HARVEST_TOKEN"],
-            account_id=os.environ["HARVEST_ACCOUNT"],
+            access_token=source["HARVEST_TOKEN"],
+            account_id=source["HARVEST_ACCOUNT"],
             user_agent=user_agent,
         )
 

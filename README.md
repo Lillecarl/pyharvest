@@ -23,6 +23,7 @@ async with Harvest(
 ```
 
 `Harvest.from_env(user_agent=...)` reads `HARVEST_TOKEN` and `HARVEST_ACCOUNT`.
+If `HARVEST_ENV_FILE` names a dotenv file, it reads them from that file only.
 
 Each API section is a flat attribute on `Harvest`, named after its doc page
 (`harvest.invoices`, `harvest.invoice_payments`, `harvest.reports`, ...). Its
