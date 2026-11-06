@@ -35,6 +35,7 @@ from pyharvest.client import read_env_file
 from pyharvest.models.approvals import ApprovalBucket, ApprovalSubmit
 from pyharvest.models.base import ApprovalStatus
 from pyharvest.models.clients import ClientCreate, ContactCreate
+from pyharvest.models.company import CompanyUpdate, ReimbursementSettingsUpdate
 from pyharvest.models.estimates import (
     EstimateCreate,
     EstimateItemCategoryCreate,
@@ -55,6 +56,12 @@ from pyharvest.models.invoices import (
     InvoiceMessageTemplate,
     InvoicePaymentCreate,
     InvoiceState,
+)
+from pyharvest.models.notifications import (
+    NotificationPeek,
+    NotificationPreferencesUpdate,
+    NotificationToggleInput,
+    NotificationUnreadCount,
 )
 from pyharvest.models.projects import (
     BillBy,
@@ -554,6 +561,74 @@ async def test_report_export_download(demo: Harvest, seed: Seed) -> None:
     csv = (await demo.reports.export_download(export.id)).decode()
     for entry in seed.entries:
         assert entry.notes and entry.notes in csv
+
+
+async def test_company_update(demo: Harvest) -> None:
+    before = await demo.company.get()
+    try:
+        changed = await demo.company.update(
+            CompanyUpdate(
+                weekly_capacity=before.weekly_capacity + 3600,
+                wants_timestamp_timers=not before.wants_timestamp_timers,
+            )
+        )
+        assert changed.weekly_capacity == before.weekly_capacity + 3600
+        assert changed.wants_timestamp_timers != before.wants_timestamp_timers
+    finally:
+        await demo.company.update(
+            CompanyUpdate(
+                weekly_capacity=before.weekly_capacity,
+                wants_timestamp_timers=before.wants_timestamp_timers,
+            )
+        )
+
+
+async def test_reimbursement_settings_update(demo: Harvest) -> None:
+    before = await demo.company.reimbursement_settings()
+    flipped = not before.expense_reimbursement_decline_requests
+    try:
+        changed = await demo.company.update_reimbursement_settings(
+            ReimbursementSettingsUpdate(expense_reimbursement_decline_requests=flipped)
+        )
+        assert changed.expense_reimbursement_decline_requests is flipped
+    finally:
+        await demo.company.update_reimbursement_settings(
+            ReimbursementSettingsUpdate(
+                expense_reimbursement_decline_requests=not flipped
+            )
+        )
+
+
+async def test_notification_preferences_update(demo: Harvest) -> None:
+    before = await demo.notification_preferences.get()
+    flipped = not before.weekly_report.enabled
+    try:
+        changed = await demo.notification_preferences.update(
+            NotificationPreferencesUpdate(
+                weekly_report=NotificationToggleInput(enabled=flipped)
+            )
+        )
+        assert changed.weekly_report.enabled is flipped
+        assert changed.reminders == before.reminders
+    finally:
+        await demo.notification_preferences.update(
+            NotificationPreferencesUpdate(
+                weekly_report=NotificationToggleInput(enabled=not flipped)
+            )
+        )
+
+
+async def test_notification_feed(demo: Harvest) -> None:
+    peek = await demo.notifications.peek()
+    count = await demo.notifications.unread_count()
+    assert peek.unread_count == count
+    after = await demo.notifications.mark_all_read()
+    assert after.total == 0
+    for path, model in [
+        ("notifications/peek", NotificationPeek),
+        ("notifications/unread_count", NotificationUnreadCount),
+    ]:
+        await livecheck.check_object(demo, path, model)
 
 
 @contextmanager
