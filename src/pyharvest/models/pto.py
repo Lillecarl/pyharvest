@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import RootModel
 
@@ -189,6 +189,11 @@ class TimeOffPolicy(HarvestModel):
     is_active: bool
     created_at: dt.datetime
     updated_at: dt.datetime
+    # Undocumented; seen live on a trial account. tenure_steps was always
+    # empty, so its item shape is unknown.
+    deferred_accrual: bool | None = None
+    # Any: undocumented JSON of unknown shape.
+    tenure_steps: list[Any] | None = None
 
 
 class TimeOffPolicyCreate(HarvestInput):
@@ -247,6 +252,9 @@ class TimeOffBalance(HarvestModel):
     pending_hours: Decimal
     used_fraction: Decimal | None = None
     pending_fraction: Decimal | None = None
+    # Undocumented; seen live on a trial account, the second always null.
+    deferred_accrual: bool | None = None
+    earning_for_next_year_days: Decimal | None = None
 
 
 class TimeOffBalanceSheet(HarvestModel):
