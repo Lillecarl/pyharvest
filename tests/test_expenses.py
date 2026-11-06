@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pyharvest import Upload
+from pyharvest import Attachment, HarvestError
 from pyharvest.models import ApprovalStatus
 from pyharvest.models.expenses import (
     Expense,
@@ -97,7 +97,7 @@ async def test_create_with_receipt_sends_multipart(
             total_cost=13.59,
             billable=False,
         ),
-        receipt=Upload("kvitto.pdf", b"%PDF-1.4", "application/pdf"),
+        receipt=Attachment("kvitto.pdf", b"%PDF-1.4", "application/pdf"),
     )
 
     request = route.calls.last.request
@@ -131,18 +131,83 @@ async def test_receipt_with_null_field_raises(
         await Expenses(harvest._session).update(
             500,
             ExpenseUpdate(notes=None),
-            receipt=Upload("kvitto.pdf", b"%PDF-1.4", "application/pdf"),
+            receipt=Attachment("kvitto.pdf", b"%PDF-1.4", "application/pdf"),
         )
 
 
 @pytest.mark.anyio
-async def test_upload_read_guesses_type(tmp_path: Path) -> None:
+async def test_attachment_read_guesses_type(tmp_path: Path) -> None:
     path = tmp_path / "kvitto.pdf"
     path.write_bytes(b"%PDF-1.4")
 
-    assert await Upload.read(path) == Upload(
+    assert await Attachment.read(path) == Attachment(
         "kvitto.pdf", b"%PDF-1.4", "application/pdf"
     )
+
+
+RECEIPT_URL = "https://acme.harvestapp.com/expenses/500/receipt.pdf"
+
+
+def with_receipt_url(url: str) -> dict[str, object]:
+    return fixtures_expenses.expense(
+        receipt={
+            "url": url,
+            "file_name": "ticket.pdf",
+            "file_size": 8,
+            "content_type": "application/pdf",
+        }
+    )
+
+
+@pytest.mark.anyio
+async def test_download_receipt_sends_token_to_harvest(
+    harvest: Harvest, router: respx.MockRouter
+) -> None:
+    router.get("expenses/500").respond(json=with_receipt_url(RECEIPT_URL))
+    route = router.get(RECEIPT_URL).respond(content=b"%PDF-1.4")
+
+    receipt = await Expenses(harvest._session).download_receipt(500)
+
+    assert receipt == Attachment("ticket.pdf", b"%PDF-1.4", "application/pdf")
+    assert route.calls.last.request.headers["Authorization"] == "Bearer tok"
+
+
+@pytest.mark.anyio
+async def test_download_receipt_none_without_receipt(
+    harvest: Harvest, router: respx.MockRouter
+) -> None:
+    router.get("expenses/500").respond(json=fixtures_expenses.expense(receipt=None))
+
+    assert await Expenses(harvest._session).download_receipt(500) is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/receipt.pdf",
+        "https://harvestapp.com.example.com/receipt.pdf",
+        "http://acme.harvestapp.com/expenses/500/receipt.pdf",
+    ],
+)
+async def test_download_receipt_refuses_other_hosts(
+    harvest: Harvest, router: respx.MockRouter, url: str
+) -> None:
+    router.get("expenses/500").respond(json=with_receipt_url(url))
+
+    with pytest.raises(ValueError, match="not a Harvest file URL"):
+        await Expenses(harvest._session).download_receipt(500)
+
+
+@pytest.mark.anyio
+async def test_download_receipt_raises_on_redirect(
+    harvest: Harvest, router: respx.MockRouter
+) -> None:
+    router.get("expenses/500").respond(json=with_receipt_url(RECEIPT_URL))
+    router.get(RECEIPT_URL).respond(302, headers={"Location": "https://login/"})
+
+    with pytest.raises(HarvestError):
+        await Expenses(harvest._session).download_receipt(500)
 
 
 @pytest.mark.anyio

@@ -20,6 +20,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
+import anyio
+
 # Runtime imports, not TYPE_CHECKING: MCPServer resolves tool annotations to
 # find the Context parameter and to build the argument schemas.
 from mcp.server.mcpserver import Context, MCPServer
@@ -27,7 +29,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
 
-from pyharvest._session import Upload
+from pyharvest._session import Attachment
 from pyharvest.client import Harvest
 from pyharvest.errors import HarvestError
 from pyharvest.models.company import Company
@@ -162,6 +164,13 @@ class CategoryRow(Result):
     unit_price: float | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
+class SavedFile(Result):
+    path: str
+    size: int
+    """Bytes written."""
+    content_type: str
+
+
 class CreateResult(Result):
     created: list[EntryRow]
     error: str | None = None
@@ -276,16 +285,37 @@ def to_expense_row(expense: Expense) -> ExpenseRow:
     )
 
 
-async def read_receipt(path: str | None) -> Upload | None:
-    if path is None:
-        return None
+def absolute(path: str, name: str) -> Path:
     file = Path(path).expanduser()
     if not file.is_absolute():
-        raise ToolError(f"receipt_path must be absolute: {path!r}")
+        raise ToolError(f"{name} must be absolute: {path!r}")
+    return file
+
+
+async def read_receipt(path: str | None) -> Attachment | None:
+    if path is None:
+        return None
     try:
-        return await Upload.read(file)
+        return await Attachment.read(absolute(path, "receipt_path"))
     except OSError as exc:
         raise ToolError(f"cannot read receipt: {exc}") from exc
+
+
+async def save(attachment: Attachment, path: str) -> SavedFile:
+    """Write into path, or into the directory path names, never over a file."""
+    target = absolute(path, "path")
+    if target.is_dir():
+        target /= attachment.file_name
+    try:
+        async with await anyio.open_file(target, "xb") as f:
+            await f.write(attachment.content)
+    except OSError as exc:
+        raise ToolError(f"cannot write receipt: {exc}") from exc
+    return SavedFile(
+        path=str(target),
+        size=len(attachment.content),
+        content_type=attachment.content_type,
+    )
 
 
 def summarise(
@@ -564,6 +594,21 @@ def create_server(
                     expense_id, changes, receipt=receipt
                 )
             )
+
+    @server.tool(annotations=CREATE)
+    async def download_receipt(
+        ctx: Context[Harvest], expense_id: int, path: str
+    ) -> SavedFile:
+        """Save an expense's receipt on the server's machine.
+
+        path is absolute: a new file, or a directory to save the receipt
+        under its Harvest file name. An existing file is never overwritten.
+        """
+        with reported():
+            receipt = await _harvest(ctx).expenses.download_receipt(expense_id)
+        if receipt is None:
+            raise ToolError(f"expense {expense_id} has no receipt")
+        return await save(receipt, path)
 
     @server.tool(annotations=CHANGE)
     async def delete_expense(ctx: Context[Harvest], expense_id: int) -> str:

@@ -67,6 +67,7 @@ async def test_lists_tools(client: Client) -> None:
         "create_time_entries",
         "delete_expense",
         "delete_time_entry",
+        "download_receipt",
         "expense_categories",
         "get_time_entry",
         "harvest_get",
@@ -283,6 +284,60 @@ async def test_update_expense_null_with_receipt_is_reported(
     assert result.is_error
     assert "null" in str(result.content)
     assert not route.called
+
+
+RECEIPT_URL = "https://acme.harvestapp.com/expenses/500/receipt.pdf"
+
+
+def mock_receipt(router: respx.MockRouter) -> None:
+    receipt = {
+        "url": RECEIPT_URL,
+        "file_name": "ticket.pdf",
+        "file_size": 8,
+        "content_type": "application/pdf",
+    }
+    router.get("expenses/500").respond(json=fixtures_expenses.expense(receipt=receipt))
+    router.get(RECEIPT_URL).respond(content=b"%PDF-1.4")
+
+
+@pytest.mark.anyio
+async def test_download_receipt_into_directory(
+    client: Client, router: respx.MockRouter, tmp_path: Path
+) -> None:
+    mock_receipt(router)
+    result = await client.call_tool(
+        "download_receipt", {"expense_id": 500, "path": str(tmp_path)}
+    )
+    assert result.structured_content
+    assert result.structured_content["path"] == str(tmp_path / "ticket.pdf")
+    assert (tmp_path / "ticket.pdf").read_bytes() == b"%PDF-1.4"
+
+
+@pytest.mark.anyio
+async def test_download_receipt_never_overwrites(
+    client: Client, router: respx.MockRouter, tmp_path: Path
+) -> None:
+    mock_receipt(router)
+    existing = tmp_path / "mine.pdf"
+    existing.write_bytes(b"keep")
+    result = await client.call_tool(
+        "download_receipt", {"expense_id": 500, "path": str(existing)}
+    )
+    assert result.is_error
+    assert "cannot write" in str(result.content)
+    assert existing.read_bytes() == b"keep"
+
+
+@pytest.mark.anyio
+async def test_download_receipt_without_receipt(
+    client: Client, router: respx.MockRouter, tmp_path: Path
+) -> None:
+    router.get("expenses/500").respond(json=fixtures_expenses.expense(receipt=None))
+    result = await client.call_tool(
+        "download_receipt", {"expense_id": 500, "path": str(tmp_path)}
+    )
+    assert result.is_error
+    assert "no receipt" in str(result.content)
 
 
 @pytest.mark.anyio

@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import mimetypes
 import os
+import re
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from enum import Enum
@@ -22,16 +23,20 @@ type QueryValue = str | int | bool | dt.date | dt.datetime | Enum | None
 MAX_PER_PAGE: Final = 2000
 
 
+# A receipt URL is on the account's subdomain, not on the API host.
+FILE_HOST: Final = re.compile(r"[a-z0-9-]+\.harvestapp\.com")
+
+
 @dataclass(frozen=True, slots=True)
-class Upload:
-    """A file sent as one part of a multipart request."""
+class Attachment:
+    """A file attached to a record, such as an expense receipt."""
 
     file_name: str
     content: bytes
     content_type: str
 
     @classmethod
-    async def read(cls, path: str | os.PathLike[str]) -> Upload:
+    async def read(cls, path: str | os.PathLike[str]) -> Attachment:
         """Read a file, with its media type guessed from the extension."""
         file = anyio.Path(path)
         content_type, _ = mimetypes.guess_type(file.name)
@@ -97,7 +102,7 @@ class Session:
         params: Mapping[str, QueryValue] | None = None,
         json: Mapping[str, object] | None = None,
         data: Mapping[str, str] | None = None,
-        files: Mapping[str, Upload] | None = None,
+        files: Mapping[str, Attachment] | None = None,
     ) -> httpx.Response:
         # None, not {}: an empty params mapping makes httpx replace the URL's
         # own query, which drops the cursor from links.next.
@@ -137,7 +142,7 @@ class Session:
         model: type[M],
         payload: BaseModel | None = None,
         *,
-        files: Mapping[str, Upload] | None = None,
+        files: Mapping[str, Attachment] | None = None,
     ) -> M:
         """With ``files``, the payload goes as form fields of a multipart body."""
         body = None
@@ -154,6 +159,20 @@ class Session:
 
     async def delete(self, url: str) -> None:
         await self.request("DELETE", url)
+
+    async def download(self, url: str) -> httpx.Response:
+        """GET an absolute file URL from Harvest, with the token.
+
+        Refuses any other host, so a URL in a response cannot send the token
+        elsewhere. Redirects are not followed, and a 3xx raises.
+        """
+        target = httpx.URL(url)
+        if target.scheme != "https" or not FILE_HOST.fullmatch(target.host):
+            raise ValueError(f"not a Harvest file URL: {url}")
+        response = await self.request("GET", url)
+        if response.status_code != 200:
+            raise error_for(response)
+        return response
 
     async def paginate[M: BaseModel](
         self,

@@ -30,8 +30,8 @@ models are in `pyharvest.models.<section>`. List methods return async
 iterators that follow pagination for you.
 
 To attach a receipt, pass
-`receipt=await pyharvest.Upload.read(path)` to `harvest.expenses.create` or
-`update`. Not supported yet: `POST /v2/imports`, which needs a multipart
+`receipt=await pyharvest.Attachment.read(path)` to `harvest.expenses.create`
+or `update`. `harvest.expenses.download_receipt(id)` returns it again. Not supported yet: `POST /v2/imports`, which needs a multipart
 upload too.
 
 ## MCP server

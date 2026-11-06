@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pyharvest._session import Attachment
 from pyharvest.models.expenses import Expense, ExpenseCategory
 
 if TYPE_CHECKING:
     import datetime as dt
     from collections.abc import AsyncIterator
 
-    from pyharvest._session import Session, Upload
+    from pyharvest._session import Session
     from pyharvest.models.base import ApprovalStatus
     from pyharvest.models.expenses import (
         ExpenseCategoryCreate,
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     )
 
 
-def _receipt(receipt: Upload | None) -> dict[str, Upload] | None:
+def _receipt(receipt: Attachment | None) -> dict[str, Attachment] | None:
     return None if receipt is None else {"receipt": receipt}
 
 
@@ -57,8 +58,21 @@ class Expenses:
     async def get(self, expense_id: int) -> Expense:
         return await self._session.get(f"expenses/{expense_id}", Expense)
 
+    async def download_receipt(self, expense_id: int) -> Attachment | None:
+        """The receipt attached to an expense, or None when it has none."""
+        receipt = (await self.get(expense_id)).receipt
+        if receipt is None:
+            return None
+        response = await self._session.download(receipt.url)
+        return Attachment(
+            receipt.file_name,
+            response.content,
+            receipt.content_type
+            or response.headers.get("Content-Type", "application/octet-stream"),
+        )
+
     async def create(
-        self, expense: ExpenseCreate, *, receipt: Upload | None = None
+        self, expense: ExpenseCreate, *, receipt: Attachment | None = None
     ) -> Expense:
         """A receipt makes the request multipart, which cannot send null."""
         return await self._session.send(
@@ -66,7 +80,11 @@ class Expenses:
         )
 
     async def update(
-        self, expense_id: int, changes: ExpenseUpdate, *, receipt: Upload | None = None
+        self,
+        expense_id: int,
+        changes: ExpenseUpdate,
+        *,
+        receipt: Attachment | None = None,
     ) -> Expense:
         """A receipt replaces the attached one, and cannot be sent with a null."""
         return await self._session.send(
