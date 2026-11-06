@@ -155,6 +155,8 @@ class UninvoicedReportResult(HarvestModel):
     uninvoiced_hours: Decimal
     uninvoiced_expenses: Decimal
     uninvoiced_amount: Decimal
+    # Undocumented; seen live on a trial account.
+    invoiced_amount: Decimal | None = None
 
 
 class ProjectBudgetReportResult(HarvestModel):
@@ -169,6 +171,8 @@ class ProjectBudgetReportResult(HarvestModel):
     budget: Decimal | None = None
     budget_spent: Decimal | None = None
     budget_remaining: Decimal | None = None
+    # Undocumented; seen live on a trial account.
+    currency: str | None = None
 
 
 class ProfitabilityResult(HarvestModel):
