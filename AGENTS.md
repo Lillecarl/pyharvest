@@ -54,7 +54,8 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 - `.privenv` (direnv): Dynamist, real data, member token. Writes only as careful experiments on records the experiment created.
 - `.demoenv` (ignored via `.git/info/exclude`): trial company "Test", administrator. Free for writes: admin sections, approvals, users.
 - `HARVEST_ENV_FILE=<file>` makes `Harvest.from_env()` read only that file. Scripts: `HARVEST_ENV_FILE=.demoenv python ...`. MCP: `mcp__pyharvest-demo__*` hits the demo, `mcp__pyharvest__*` Dynamist.
-- `pytest -m demo` runs `tests/test_demo.py`: writes, demo only, refuses a non-trial company. Name records with `name()` and delete them in `finally`. Trials expire; a new one needs a new `.demoenv`.
+- `pytest -m demo` runs `tests/test_demo.py`: writes, demo only, refuses a non-trial company. The `seed` fixture builds one record of each kind for the shared checks in `tests/livecheck.py`, then deletes it. Name records with `name()` and delete them in `finally`. Trials expire; a new one needs a new `.demoenv`.
+- Harvest never deletes a task or expense category that time or an expense used, even after the project is gone: archive (`is_active=False`). The seed borrows the account's own.
 
 ## Checks
 
