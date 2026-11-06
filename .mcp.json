@@ -5,6 +5,12 @@
       "command": "nix",
       "args": ["run", "--file", ".", "pyharvest-mcp"]
     },
+    "pyharvest-demo": {
+      "type": "stdio",
+      "command": "nix",
+      "args": ["run", "--file", ".", "pyharvest-mcp"],
+      "env": { "HARVEST_ENV_FILE": ".demoenv" }
+    },
     "pymux": {
       "type": "stdio",
       "command": "nix",

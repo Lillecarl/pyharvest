@@ -40,7 +40,7 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 
 - `src/pyharvest/mcp.py`, mcp 2.x (`MCPServer`, not v1 `FastMCP`; the pinned nixpkgs has 2.2). `create_server(connect)` takes a `Harvest` factory; tests pass one hitting respx.
 - `.mcp.json` runs `nix run --file . pyharvest-mcp`; an edit reaches Claude Code on server restart (`/mcp`), after a rebuild. That attr skips tests; `pyharvest` runs them.
-- Credentials: inherited env (direnv loads `.privenv`). No `env` block in `.mcp.json`: it is committed.
+- Credentials: inherited env (direnv loads `.privenv`). `.mcp.json` is committed, so its `env` blocks hold no secrets: `pyharvest-demo` sets only `HARVEST_ENV_FILE=.demoenv`.
 - stdout is the protocol: never print. `log_level="WARNING"` keeps httpx request logs off stderr.
 - Tool args reuse `HarvestInput` models, so update keeps unset-vs-null. Mark writes in docstrings and `ToolAnnotations`.
 - Results cost the caller's context: list/write tools return compact `Result` models (`EntryRow`, `AssignedProject`); full records only from `get_time_entry` and `harvest_get`. Shaping is pure functions (`to_row`, `summarise`), tested without a server. Field docstrings reach the output schema (`use_attribute_docstrings`). A field empty on most rows gets `Field(exclude_if=...)`: MCPServer dumps results without `exclude_none`.
@@ -49,8 +49,15 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 - Iterate: edit, `nix build --file . pyharvest-mcp`, then pymux `pane.send` `/mcp reconnect pyharvest` into this session's pane (`tree`, `"here": true`, `no_paste`) and end the turn so it runs.
 - Smoke test outside Claude Code: `mcp.Client(StdioServerParameters(command="nix", args=[...], env=dict(os.environ)))`; stdio_client passes a minimal env unless given one.
 
+## Accounts
+
+- `.privenv` (direnv): Dynamist, real data, member token. Writes only as careful experiments on records the experiment created.
+- `.demoenv` (ignored via `.git/info/exclude`): trial company "Test", administrator. Free for writes: admin sections, approvals, users.
+- `HARVEST_ENV_FILE=<file>` makes `Harvest.from_env()` read only that file. Scripts: `HARVEST_ENV_FILE=.demoenv python ...`. MCP: `mcp__pyharvest-demo__*` hits the demo, `mcp__pyharvest__*` Dynamist.
+- `pytest -m demo` runs `tests/test_demo.py`: writes, demo only, refuses a non-trial company. Name records with `name()` and delete them in `finally`. Trials expire; a new one needs a new `.demoenv`.
+
 ## Checks
 
-- `pytest` in the direnv shell runs live tests when `HARVEST_TOKEN`/`HARVEST_ACCOUNT` are set (`.privenv`).
+- `pytest` in the direnv shell runs live tests when `HARVEST_TOKEN`/`HARVEST_ACCOUNT` are set (`.privenv`). It skips the `demo` marker.
 - `nix build --file . checks`: build + offline tests, ruff, nixfmt. Live tests skip in the sandbox.
 - `pyrefly check src tests`.

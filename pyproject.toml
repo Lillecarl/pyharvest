@@ -34,6 +34,9 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A later -m on the command line wins: `pytest -m demo` runs only those.
+addopts = ["-m", "not demo"]
+markers = ["demo: writes to the trial account in .demoenv; run with -m demo"]
 
 [tool.ruff]
 target-version = "py312"
