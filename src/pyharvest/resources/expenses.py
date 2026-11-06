@@ -106,8 +106,8 @@ class Expenses:
         )
 
     async def withdraw(self, expense_id: int) -> Expense:
-        """Beta endpoint. Also withdraws the submitter's time entries on the
-        same project and day."""
+        """Beta endpoint. Takes back an approval: the expense and the
+        submitter's time on the same project and day return to submitted."""
         return await self._session.send(
             "POST", f"expenses/{expense_id}/withdraw", Expense
         )

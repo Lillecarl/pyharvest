@@ -25,6 +25,8 @@ import pytest
 
 from pyharvest import Attachment, Harvest, NotFoundError
 from pyharvest.client import read_env_file
+from pyharvest.models.approvals import ApprovalBucket, ApprovalSubmit
+from pyharvest.models.base import ApprovalStatus
 from pyharvest.models.clients import ClientCreate, ContactCreate
 from pyharvest.models.estimates import (
     EstimateCreate,
@@ -271,6 +273,52 @@ async def test_time_entries_paginate(demo: Harvest, seed: Seed) -> None:
         )
     ]
     assert sorted(ids) == sorted(e.id for e in seed.entries)
+
+
+async def test_detailed_totals_match_rows(demo: Harvest, seed: Seed) -> None:
+    end = WEEK + dt.timedelta(days=6)
+    rows = [
+        r
+        async for r in demo.reports.time_detailed(
+            from_=WEEK, to=end, project_id=seed.project_id
+        )
+    ]
+    time = await demo.reports.time_detailed_totals(
+        from_=WEEK, to=end, project_id=seed.project_id
+    )
+    [expense] = await demo.reports.expenses_detailed_totals(
+        from_=WEEK, to=end, project_id=seed.project_id
+    )
+
+    assert time.total_hours == sum(r.hours for r in rows) == Decimal("7.5")
+    assert expense.total_amount == Decimal("123.45")
+
+
+async def test_submit_approve_withdraw(demo: Harvest, seed: Seed) -> None:
+    end = WEEK + dt.timedelta(days=6)
+    submission = await demo.approvals.submit(
+        ApprovalSubmit(period_start=WEEK, period_end=end)
+    )
+    assert submission.status == "submitted"
+    submitted = [
+        a.user_id
+        async for a in demo.approvals.list(
+            WEEK, end, approval_status=ApprovalBucket.SUBMITTED
+        )
+    ]
+    assert seed.user_id in submitted
+
+    [expense] = [e async for e in demo.expenses.list(project_id=seed.project_id)]
+    approved = await demo.expenses.approve(expense.id)
+    assert approved.approval_status == ApprovalStatus.APPROVED
+    same_day = await demo.time_entries.get(seed.entries[0].id)
+    assert same_day.approval_status == ApprovalStatus.APPROVED
+
+    # Withdraw takes back the approval, not the submission.
+    withdrawn = await demo.expenses.withdraw(expense.id)
+    assert withdrawn.approval_status == ApprovalStatus.SUBMITTED
+    same_day = await demo.time_entries.get(seed.entries[0].id)
+    assert same_day.approval_status == ApprovalStatus.SUBMITTED
 
 
 async def test_task_round_trip(demo: Harvest) -> None:
