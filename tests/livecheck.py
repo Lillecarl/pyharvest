@@ -28,7 +28,22 @@ from pyharvest.models.pto import (
     WorkSchedule,
 )
 from pyharvest.models.reimbursements import Reimbursement
-from pyharvest.models.reports import DetailedExpenseRow, DetailedTimeRow, TimeByProject
+from pyharvest.models.reports import (
+    DetailedExpenseRow,
+    DetailedTimeRow,
+    ExpensesByCategory,
+    ExpensesByClient,
+    ExpensesByProject,
+    ExpensesByUser,
+    ProfitabilityResult,
+    ProjectBudgetReportResult,
+    SavedReport,
+    TimeByClient,
+    TimeByProject,
+    TimeByTask,
+    TimeByUser,
+    UninvoicedReportResult,
+)
 from pyharvest.models.roles import CustomRole, Permission, Role
 from pyharvest.models.tasks import Task
 from pyharvest.models.time_entries import TimeEntry
@@ -73,9 +88,20 @@ LISTS: list[tuple[str, str, type[BaseModel], dict[str, QueryValue]]] = [
     ("pto/assignments", "assignments", PtoAssignment, {}),
     ("pto/allocations", "pto_allocations", PtoAllocation, {}),
     ("users/me/project_assignments", "project_assignments", ProjectAssignment, {}),
+    ("reports/time/clients", "results", TimeByClient, RECENT),
     ("reports/time/projects", "results", TimeByProject, RECENT),
+    ("reports/time/tasks", "results", TimeByTask, RECENT),
+    ("reports/time/team", "results", TimeByUser, RECENT),
     ("reports/time/detailed", "results", DetailedTimeRow, RECENT),
+    ("reports/expenses/clients", "results", ExpensesByClient, RECENT),
+    ("reports/expenses/projects", "results", ExpensesByProject, RECENT),
+    ("reports/expenses/categories", "results", ExpensesByCategory, RECENT),
+    ("reports/expenses/team", "results", ExpensesByUser, RECENT),
     ("reports/expenses/detailed", "results", DetailedExpenseRow, RECENT),
+    ("reports/uninvoiced", "results", UninvoicedReportResult, RECENT),
+    ("reports/project_budget", "results", ProjectBudgetReportResult, {}),
+    ("reports/profitability", "results", ProfitabilityResult, RECENT),
+    ("reports/saved", "saved_reports", SavedReport, {}),
 ]
 
 OBJECTS: list[tuple[str, type[BaseModel]]] = [
@@ -131,7 +157,9 @@ async def check_list(
     records = response.json()[key]
     if not records:
         pytest.skip(f"{path}: no records to check")
-    assert unmodelled(model, records) == set()
+    # Explicit messages: pytest rewrites asserts in test modules only.
+    missing = unmodelled(model, records)
+    assert not missing, f"{path}: {sorted(missing)}"
     for record in records:
         model.model_validate(record)
 
@@ -141,5 +169,6 @@ async def check_object(harvest: Harvest, path: str, model: type[BaseModel]) -> N
         raw = (await harvest._session.request("GET", path)).json()
     except ForbiddenError as exc:
         pytest.skip(f"{path}: {exc.message}")
-    assert unmodelled(model, raw) == set()
+    missing = unmodelled(model, raw)
+    assert not missing, f"{path}: {sorted(missing)}"
     model.model_validate(raw)
