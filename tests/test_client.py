@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 import respx
 
-from pyharvest import Harvest, NotFoundError, UnauthorizedError
+from pyharvest import Harvest, NotFoundError, RateLimitedError, UnauthorizedError
 from pyharvest.client import read_env_file
 
 from . import fixtures
@@ -61,6 +61,19 @@ async def test_retries_after_429(harvest: Harvest, router: respx.MockRouter) -> 
     await harvest.users.me()
 
     assert route.call_count == 2
+
+
+@pytest.mark.anyio
+async def test_long_retry_after_raises(
+    harvest: Harvest, router: respx.MockRouter
+) -> None:
+    route = router.get("users/me").respond(429, headers={"Retry-After": "86400"})
+
+    with pytest.raises(RateLimitedError) as caught:
+        await harvest.users.me()
+
+    assert caught.value.retry_after == 86400
+    assert route.call_count == 1
 
 
 @pytest.mark.anyio

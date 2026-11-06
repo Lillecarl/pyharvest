@@ -83,6 +83,10 @@ class Harvest:
 
     Harvest requires a User-Agent that names the application and a contact,
     for example ``"MyApp (me@example.com)"``.
+
+    A 429 is retried after its ``Retry-After``, up to ``max_retries`` times.
+    A wait over ``max_retry_wait`` seconds raises ``RateLimitedError`` at
+    once: the default is the longest documented window (reports, 15 minutes).
     """
 
     def __init__(
@@ -93,6 +97,7 @@ class Harvest:
         user_agent: str,
         base_url: str = BASE_URL,
         max_retries: int = 3,
+        max_retry_wait: float = 900.0,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -108,7 +113,9 @@ class Harvest:
             },
             transport=transport,
         )
-        self._session = Session(http, max_retries=max_retries)
+        self._session = Session(
+            http, max_retries=max_retries, max_retry_wait=max_retry_wait
+        )
         self.approvals: Final = Approvals(self._session)
         self.clients: Final = Clients(self._session)
         self.company: Final = CompanySettings(self._session)

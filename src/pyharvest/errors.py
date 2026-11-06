@@ -36,7 +36,12 @@ class UnprocessableError(HarvestError):
 
 
 class RateLimitedError(HarvestError):
-    pass
+    def __init__(
+        self, status: int, message: str, *, retry_after: float | None = None
+    ) -> None:
+        super().__init__(status, message)
+        self.retry_after = retry_after
+        """Seconds Harvest asked the client to wait, from ``Retry-After``."""
 
 
 class ServerError(HarvestError):
@@ -70,5 +75,16 @@ def _message(response: httpx.Response) -> str:
 
 def error_for(response: httpx.Response) -> HarvestError:
     status = response.status_code
+    if status == 429:
+        return RateLimitedError(
+            status, _message(response), retry_after=retry_after(response)
+        )
     cls = _BY_STATUS.get(status, ServerError if status >= 500 else HarvestError)
     return cls(status, _message(response))
+
+
+def retry_after(response: httpx.Response) -> float | None:
+    try:
+        return float(response.headers["Retry-After"])
+    except (KeyError, ValueError):
+        return None

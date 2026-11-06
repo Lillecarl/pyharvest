@@ -13,7 +13,7 @@ import anyio
 import httpx
 from pydantic import BaseModel
 
-from pyharvest.errors import error_for
+from pyharvest.errors import error_for, retry_after
 
 if TYPE_CHECKING:
     from pydantic import JsonValue
@@ -90,9 +90,12 @@ def query(params: Mapping[str, QueryValue]) -> dict[str, str | int]:
 class Session:
     """HTTP transport shared by every resource: errors, retries, pagination."""
 
-    def __init__(self, http: httpx.AsyncClient, *, max_retries: int) -> None:
+    def __init__(
+        self, http: httpx.AsyncClient, *, max_retries: int, max_retry_wait: float
+    ) -> None:
         self.http = http
         self.max_retries = max_retries
+        self.max_retry_wait = max_retry_wait
 
     async def request(
         self,
@@ -118,9 +121,12 @@ class Session:
                 method, url, params=rendered, json=json, data=data, files=parts
             )
             if response.status_code == 429 and attempt < self.max_retries:
-                attempt += 1
-                await anyio.sleep(float(response.headers.get("Retry-After", "1")))
-                continue
+                # Measured: invoice messages on a trial answer 86400.
+                wait = retry_after(response) or 1.0
+                if wait <= self.max_retry_wait:
+                    attempt += 1
+                    await anyio.sleep(wait)
+                    continue
             if response.is_error:
                 raise error_for(response)
             return response
