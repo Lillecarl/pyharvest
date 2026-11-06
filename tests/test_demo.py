@@ -34,7 +34,12 @@ from pyharvest import (
 from pyharvest.client import read_env_file
 from pyharvest.models.approvals import ApprovalBucket, ApprovalSubmit
 from pyharvest.models.base import ApprovalStatus
-from pyharvest.models.clients import ClientCreate, ContactCreate
+from pyharvest.models.clients import (
+    ClientCreate,
+    ClientUpdate,
+    ContactCreate,
+    ContactUpdate,
+)
 from pyharvest.models.company import CompanyUpdate, ReimbursementSettingsUpdate
 from pyharvest.models.estimates import (
     EstimateCreate,
@@ -67,6 +72,7 @@ from pyharvest.models.projects import (
     BillBy,
     BudgetBy,
     ProjectCreate,
+    ProjectUpdate,
     TaskAssignmentCreate,
     UserAssignmentCreate,
 )
@@ -561,6 +567,31 @@ async def test_report_export_download(demo: Harvest, seed: Seed) -> None:
     csv = (await demo.reports.export_download(export.id)).decode()
     for entry in seed.entries:
         assert entry.notes and entry.notes in csv
+
+
+async def test_client_contact_project_updates(demo: Harvest, seed: Seed) -> None:
+    # Harvest refuses to archive a client with active projects.
+    await demo.projects.update(seed.project_id, ProjectUpdate(is_active=False))
+    try:
+        client = await demo.clients.update(
+            seed.client_id, ClientUpdate(name=name("client"), is_active=False)
+        )
+        assert not client.is_active
+    finally:
+        await demo.clients.update(seed.client_id, ClientUpdate(is_active=True))
+        await demo.projects.update(seed.project_id, ProjectUpdate(is_active=True))
+
+    [contact] = [c async for c in demo.contacts.list(client_id=seed.client_id)]
+    changed = await demo.contacts.update(contact.id, ContactUpdate(last_name="Updated"))
+    assert changed.last_name == "Updated"
+
+    project = await demo.projects.update(
+        seed.project_id,
+        ProjectUpdate(code="PYH", notes=name("notes"), budget=200, tag_ids=[]),
+    )
+    assert (project.code, project.budget) == ("PYH", Decimal(200))
+    cleared = await demo.projects.update(seed.project_id, ProjectUpdate(notes=None))
+    assert cleared.notes is None or cleared.notes == ""
 
 
 async def test_company_update(demo: Harvest) -> None:
