@@ -17,6 +17,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 # Runtime imports, not TYPE_CHECKING: MCPServer resolves tool annotations to
@@ -26,9 +27,11 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
 
+from pyharvest._session import Upload
 from pyharvest.client import Harvest
 from pyharvest.errors import HarvestError
 from pyharvest.models.company import Company
+from pyharvest.models.expenses import Expense, ExpenseCreate, ExpenseUpdate
 from pyharvest.models.time_entries import TimeEntry, TimeEntryCreate, TimeEntryUpdate
 from pyharvest.models.user_details import ProjectAssignment
 from pyharvest.models.users import User
@@ -42,7 +45,9 @@ INSTRUCTIONS: Final = """\
 Tools for one Harvest account. Writes change real data.
 Start with me (user, timezone, clock, whether the account tracks durations
 or start/end times) and my_projects (project and task ids for new entries).
-time_summary finds days with missing hours. harvest_get reads anything else."""
+time_summary finds days with missing hours. For expenses, expense_categories
+and list_expenses show the categories and projects already in use.
+harvest_get reads anything else."""
 
 READ: Final = ToolAnnotations(read_only_hint=True)
 CREATE: Final = ToolAnnotations(read_only_hint=False, destructive_hint=False)
@@ -129,6 +134,32 @@ class TimeSummary(Result):
     short_weekdays: list[dt.date]
     """Monday to Friday dates under daily_target_hours. Holidays show here too."""
     tasks: list[TaskTotal]
+
+
+class ExpenseRow(Result):
+    id: int
+    spent_date: dt.date
+    project_id: int
+    project: str
+    category_id: int
+    category: str
+    total_cost: float
+    units: float = Field(default=1.0, exclude_if=lambda v: v == 1)
+    """Units of a unit-priced category, such as mileage. Absent: 1."""
+    notes: str | None
+    receipt: str | None
+    """File name of the attached receipt, or null."""
+    billable: bool
+    approval_status: str
+    is_locked: bool
+
+
+class CategoryRow(Result):
+    id: int
+    name: str
+    unit_name: str | None = Field(default=None, exclude_if=lambda v: v is None)
+    """Set on unit-priced categories: give units, not total_cost."""
+    unit_price: float | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class CreateResult(Result):
@@ -227,6 +258,36 @@ def to_row(entry: TimeEntry) -> EntryRow:
     )
 
 
+def to_expense_row(expense: Expense) -> ExpenseRow:
+    return ExpenseRow(
+        id=expense.id,
+        spent_date=expense.spent_date,
+        project_id=expense.project.id,
+        project=expense.project.name,
+        category_id=expense.expense_category.id,
+        category=expense.expense_category.name,
+        total_cost=float(expense.total_cost),
+        units=float(expense.units),
+        notes=expense.notes,
+        receipt=expense.receipt.file_name if expense.receipt else None,
+        billable=expense.billable,
+        approval_status=expense.approval_status,
+        is_locked=expense.is_locked,
+    )
+
+
+async def read_receipt(path: str | None) -> Upload | None:
+    if path is None:
+        return None
+    file = Path(path).expanduser()
+    if not file.is_absolute():
+        raise ToolError(f"receipt_path must be absolute: {path!r}")
+    try:
+        return await Upload.read(file)
+    except OSError as exc:
+        raise ToolError(f"cannot read receipt: {exc}") from exc
+
+
 def summarise(
     entries: Iterable[TimeEntry],
     from_date: dt.date,
@@ -262,14 +323,14 @@ def summarise(
 
 @contextmanager
 def reported() -> Iterator[None]:
-    """Show Harvest's message to the model.
+    """Show Harvest's message, or the client's refusal, to the model.
 
     MCPServer replaces the text of any exception but ToolError with a bare
     "Error executing tool <name>".
     """
     try:
         yield
-    except HarvestError as exc:
+    except (HarvestError, ValueError) as exc:
         raise ToolError(str(exc)) from exc
 
 
@@ -434,6 +495,82 @@ def create_server(
         """Start the timer again on a stopped time entry."""
         with reported():
             return to_row(await _harvest(ctx).time_entries.restart(time_entry_id))
+
+    @server.tool(annotations=READ)
+    async def expense_categories(ctx: Context[Harvest]) -> list[CategoryRow]:
+        """Active expense categories."""
+        categories = _harvest(ctx).expense_categories.list(is_active=True)
+        with reported():
+            return [
+                CategoryRow(
+                    id=c.id,
+                    name=c.name,
+                    unit_name=c.unit_name,
+                    unit_price=float(c.unit_price)
+                    if c.unit_price is not None
+                    else None,
+                )
+                async for c in categories
+            ]
+
+    @server.tool(annotations=READ)
+    async def list_expenses(
+        ctx: Context[Harvest],
+        from_date: dt.date | None = None,
+        to_date: dt.date | None = None,
+        user_id: int | None = None,
+        project_id: int | None = None,
+    ) -> list[ExpenseRow]:
+        """Expenses as compact rows, newest first. Dates are inclusive spent dates."""
+        expenses = _harvest(ctx).expenses.list(
+            from_=from_date, to=to_date, user_id=user_id, project_id=project_id
+        )
+        with reported():
+            return [to_expense_row(e) async for e in expenses]
+
+    @server.tool(annotations=CREATE)
+    async def create_expense(
+        ctx: Context[Harvest],
+        expense: ExpenseCreate,
+        receipt_path: str | None = None,
+    ) -> ExpenseRow:
+        """Create an expense. Writes to the real account.
+
+        Give total_cost, or units on a unit-priced category. receipt_path is
+        an absolute path on the server's machine; the file is uploaded and
+        attached. With a receipt, no field may be null.
+        """
+        receipt = await read_receipt(receipt_path)
+        with reported():
+            return to_expense_row(
+                await _harvest(ctx).expenses.create(expense, receipt=receipt)
+            )
+
+    @server.tool(annotations=CHANGE)
+    async def update_expense(
+        ctx: Context[Harvest],
+        expense_id: int,
+        changes: ExpenseUpdate,
+        receipt_path: str | None = None,
+    ) -> ExpenseRow:
+        """Change an expense. Fields left out stay; null clears.
+
+        receipt_path replaces the attached receipt, as in create_expense.
+        """
+        receipt = await read_receipt(receipt_path)
+        with reported():
+            return to_expense_row(
+                await _harvest(ctx).expenses.update(
+                    expense_id, changes, receipt=receipt
+                )
+            )
+
+    @server.tool(annotations=CHANGE)
+    async def delete_expense(ctx: Context[Harvest], expense_id: int) -> str:
+        """Delete an expense and its receipt. Cannot be undone."""
+        with reported():
+            await _harvest(ctx).expenses.delete(expense_id)
+        return f"deleted expense {expense_id}"
 
     @server.tool(annotations=READ)
     async def harvest_get(

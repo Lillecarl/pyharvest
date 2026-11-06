@@ -12,10 +12,11 @@ from pyharvest import Harvest
 from pyharvest.mcp import create_server, summarise
 from pyharvest.models.time_entries import TimeEntry
 
-from . import fixtures, fixtures_company, fixtures_user_details
+from . import fixtures, fixtures_company, fixtures_expenses, fixtures_user_details
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+    from pathlib import Path
 
     import respx
 
@@ -62,10 +63,14 @@ def test_summarise_lists_empty_days_and_sums_exactly() -> None:
 async def test_lists_tools(client: Client) -> None:
     tools = {t.name: t for t in (await client.list_tools()).tools}
     assert sorted(tools) == [
+        "create_expense",
         "create_time_entries",
+        "delete_expense",
         "delete_time_entry",
+        "expense_categories",
         "get_time_entry",
         "harvest_get",
+        "list_expenses",
         "list_time_entries",
         "me",
         "my_projects",
@@ -73,6 +78,7 @@ async def test_lists_tools(client: Client) -> None:
         "running_timer",
         "stop_timer",
         "time_summary",
+        "update_expense",
         "update_time_entry",
     ]
     assert tools["me"].annotations and tools["me"].annotations.read_only_hint
@@ -210,6 +216,87 @@ async def test_create_time_entries_stops_at_first_failure(
     assert result.structured_content["failed_index"] == 1
     assert "Spent date is locked" in result.structured_content["error"]
     assert route.call_count == 2
+
+
+NEW_EXPENSE = {
+    "project_id": 3,
+    "expense_category_id": 7,
+    "spent_date": "2024-03-01",
+    "total_cost": 33.35,
+}
+
+
+@pytest.mark.anyio
+async def test_create_expense_uploads_receipt(
+    client: Client, router: respx.MockRouter, tmp_path: Path
+) -> None:
+    route = router.post("expenses").respond(201, json=fixtures_expenses.expense())
+    receipt = tmp_path / "ticket.pdf"
+    receipt.write_bytes(b"%PDF-1.4")
+    result = await client.call_tool(
+        "create_expense", {"expense": NEW_EXPENSE, "receipt_path": str(receipt)}
+    )
+    assert result.structured_content
+    assert result.structured_content["receipt"] == "ticket.pdf"
+    assert "units" not in result.structured_content
+    request = route.calls.last.request
+    assert request.headers["Content-Type"].startswith("multipart/form-data")
+    assert b'filename="ticket.pdf"' in request.content
+
+
+@pytest.mark.anyio
+async def test_create_expense_without_receipt_sends_json(
+    client: Client, router: respx.MockRouter
+) -> None:
+    route = router.post("expenses").respond(201, json=fixtures_expenses.expense())
+    result = await client.call_tool("create_expense", {"expense": NEW_EXPENSE})
+    assert not result.is_error
+    assert json.loads(route.calls.last.request.content) == NEW_EXPENSE
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("receipt_path", "message"),
+    [("ticket.pdf", "absolute"), ("/nonexistent/ticket.pdf", "cannot read")],
+)
+async def test_create_expense_rejects_bad_receipt_path(
+    client: Client, receipt_path: str, message: str
+) -> None:
+    result = await client.call_tool(
+        "create_expense", {"expense": NEW_EXPENSE, "receipt_path": receipt_path}
+    )
+    assert result.is_error
+    assert message in str(result.content)
+
+
+@pytest.mark.anyio
+async def test_update_expense_null_with_receipt_is_reported(
+    client: Client, router: respx.MockRouter, tmp_path: Path
+) -> None:
+    route = router.patch("expenses/500").respond(json=fixtures_expenses.expense())
+    receipt = tmp_path / "ticket.pdf"
+    receipt.write_bytes(b"%PDF-1.4")
+    result = await client.call_tool(
+        "update_expense",
+        {"expense_id": 500, "changes": {"notes": None}, "receipt_path": str(receipt)},
+    )
+    assert result.is_error
+    assert "null" in str(result.content)
+    assert not route.called
+
+
+@pytest.mark.anyio
+async def test_expense_categories(client: Client, router: respx.MockRouter) -> None:
+    route = router.get("expense_categories").respond(
+        json=fixtures.page(
+            "expense_categories", [fixtures_expenses.expense_category()], None
+        )
+    )
+    result = await client.call_tool("expense_categories", {})
+    assert route.calls.last.request.url.params["is_active"] == "true"
+    assert result.structured_content
+    [row] = result.structured_content["result"]
+    assert row["unit_name"] == "mile"
 
 
 @pytest.mark.anyio
