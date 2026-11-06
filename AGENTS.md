@@ -59,6 +59,8 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 - `HARVEST_ENV_FILE=<file>` makes `Harvest.from_env()` read only that file. Scripts: `HARVEST_ENV_FILE=.demoenv python ...`. MCP: `mcp__pyharvest-demo__*` hits the demo, `mcp__pyharvest__*` Dynamist.
 - `pytest -m demo` runs `tests/test_demo.py`: writes, demo only, refuses a non-trial company. The `seed` fixture builds one record of each kind for the shared checks in `tests/livecheck.py`, then deletes it. Name records with `name()` and delete them in `finally`. Trials expire; a new one needs a new `.demoenv`.
 - Harvest never deletes a task or expense category that time or an expense used, even after the project is gone: archive (`is_active=False`). The seed borrows the account's own.
+- `seed` first sweeps `PREFIX` records a killed run left (a stale custom role blocks a new one with the same permissions).
+- Estimate and invoice message posts (events too) have a small daily quota on the trial: then 429 with `Retry-After` 86400, growing on each refused post. The tests skip; do not probe them repeatedly.
 
 ## Checks
 

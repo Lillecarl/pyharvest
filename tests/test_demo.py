@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import uuid
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from pyharvest import Attachment, Harvest, NotFoundError
+from pyharvest import Attachment, Harvest, NotFoundError, RateLimitedError
 from pyharvest.client import read_env_file
 from pyharvest.models.approvals import ApprovalBucket, ApprovalSubmit
 from pyharvest.models.base import ApprovalStatus
@@ -32,13 +32,22 @@ from pyharvest.models.estimates import (
     EstimateCreate,
     EstimateItemCategoryCreate,
     EstimateLineItemCreate,
+    EstimateMessage,
+    EstimateMessageCreate,
+    EstimateMessageRecipientInput,
+    EstimateState,
 )
 from pyharvest.models.expenses import ExpenseCategoryCreate, ExpenseCreate
 from pyharvest.models.invoices import (
     InvoiceCreate,
     InvoiceItemCategoryCreate,
     InvoiceLineItemCreate,
+    InvoiceMessage,
+    InvoiceMessageCreate,
+    InvoiceMessageRecipientInput,
+    InvoiceMessageTemplate,
     InvoicePaymentCreate,
+    InvoiceState,
 )
 from pyharvest.models.projects import (
     BillBy,
@@ -63,7 +72,7 @@ from pyharvest.models.users import UserCreate, UserUpdate
 from . import livecheck
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 
     from pydantic import BaseModel
 
@@ -131,8 +140,39 @@ def _cleanup[**P](
     stack.push_async_callback(run)
 
 
+# Children before parents: a client with a project cannot be deleted.
+SWEEP = [
+    ("time_entries", "time_entries", "notes"),
+    ("expenses", "expenses", "notes"),
+    ("estimates", "estimates", "subject"),
+    ("invoices", "invoices", "subject"),
+    ("custom_roles", "custom_roles", "name"),
+    ("roles", "roles", "name"),
+    ("estimate_item_categories", "estimate_item_categories", "name"),
+    ("invoice_item_categories", "invoice_item_categories", "name"),
+    ("projects", "projects", "name"),
+    ("contacts", "contacts", "first_name"),
+    ("clients", "clients", "name"),
+    ("users", "users", "first_name"),
+]
+
+
+async def sweep(demo: Harvest) -> None:
+    """Delete what a killed run left: its cleanup never ran."""
+    for path, key, field in SWEEP:
+        response = await demo._session.request("GET", path, params={"per_page": 2000})
+        for record in response.json()[key]:
+            if str(record.get(field) or "").startswith(PREFIX):
+                try:
+                    await demo._session.request("DELETE", f"{path}/{record['id']}")
+                except NotFoundError:
+                    pass
+
+
 @pytest.fixture(scope="module")
 async def seed(demo: Harvest) -> AsyncIterator[Seed]:
+    # A stale custom role blocks a new one with the same permissions.
+    await sweep(demo)
     async with AsyncExitStack() as stack:
         me = await demo.users.me()
         client = await demo.clients.create(ClientCreate(name=name("client")))
@@ -404,3 +444,138 @@ async def test_expense_category_round_trip(demo: Harvest) -> None:
 async def test_receipt_round_trip(demo: Harvest, seed: Seed) -> None:
     [expense] = [e async for e in demo.expenses.list(project_id=seed.project_id)]
     assert await demo.expenses.download_receipt(expense.id) == RECEIPT
+
+
+async def test_timer_stop_restart(demo: Harvest, seed: Seed) -> None:
+    timer = await demo.time_entries.create(
+        TimeEntryCreate(
+            project_id=seed.project_id,
+            task_id=seed.task_id,
+            spent_date=livecheck.TODAY,
+            notes=name("timer"),
+        )
+    )
+    try:
+        assert timer.is_running
+        stopped = await demo.time_entries.stop(timer.id)
+        assert not stopped.is_running
+        restarted = await demo.time_entries.restart(timer.id)
+        assert restarted.is_running
+        assert not (await demo.time_entries.stop(timer.id)).is_running
+    finally:
+        await demo.time_entries.delete(timer.id)
+
+
+@contextmanager
+def daily_message_limit() -> Iterator[None]:
+    """Skip when the trial's message quota is spent.
+
+    Measured: after a few estimate and invoice message posts in one day,
+    every further post answers 429 with Retry-After 86400.
+    """
+    try:
+        yield
+    except RateLimitedError as exc:
+        pytest.skip(f"message posts rate limited for {exc.retry_after} s")
+
+
+async def _owner_alias(demo: Harvest, tag: str) -> str:
+    """A plus-address of the demo owner: Harvest mails it, nobody else."""
+    local, domain = (await demo.users.me()).email.split("@")
+    return f"{local}+{PREFIX}-{tag}@{domain}"
+
+
+async def test_estimate_events_and_messages(demo: Harvest, seed: Seed) -> None:
+    estimate = await demo.estimates.create(
+        EstimateCreate(
+            client_id=seed.client_id,
+            subject=name("estimate"),
+            line_items=[EstimateLineItemCreate(kind="Service", unit_price=100)],
+        )
+    )
+    try:
+        assert estimate.state == EstimateState.DRAFT
+        events = demo.estimate_messages
+        with daily_message_limit():
+            await events.mark_as_sent(estimate.id)
+        assert (await demo.estimates.get(estimate.id)).state == EstimateState.SENT
+        for event, state in [
+            (events.mark_as_accepted, EstimateState.ACCEPTED),
+            (events.reopen, EstimateState.SENT),
+            (events.mark_as_declined, EstimateState.DECLINED),
+            (events.reopen, EstimateState.SENT),
+        ]:
+            await event(estimate.id)
+            assert (await demo.estimates.get(estimate.id)).state == state, event
+
+        message = await events.create(
+            estimate.id,
+            EstimateMessageCreate(
+                recipients=[
+                    EstimateMessageRecipientInput(
+                        email=await _owner_alias(demo, "estimate")
+                    )
+                ],
+                subject=name("estimate message"),
+            ),
+        )
+        await livecheck.check_list(
+            demo,
+            f"estimates/{estimate.id}/messages",
+            "estimate_messages",
+            EstimateMessage,
+            {},
+        )
+        await events.delete(estimate.id, message.id)
+    finally:
+        await demo.estimates.delete(estimate.id)
+
+
+async def test_invoice_events_and_messages(demo: Harvest, seed: Seed) -> None:
+    invoice = await demo.invoices.create(
+        InvoiceCreate(
+            client_id=seed.client_id,
+            subject=name("invoice"),
+            line_items=[InvoiceLineItemCreate(kind="Service", unit_price=100)],
+        )
+    )
+    try:
+        assert invoice.state == InvoiceState.DRAFT
+        events = demo.invoice_messages
+        with daily_message_limit():
+            await events.mark_sent(invoice.id)
+        assert (await demo.invoices.get(invoice.id)).state == InvoiceState.OPEN
+        for event, state in [
+            (events.mark_closed, InvoiceState.CLOSED),
+            (events.reopen, InvoiceState.OPEN),
+            (events.mark_draft, InvoiceState.DRAFT),
+        ]:
+            await event(invoice.id)
+            assert (await demo.invoices.get(invoice.id)).state == state, event
+
+        template = await events.template(invoice.id)
+        await livecheck.check_object(
+            demo, f"invoices/{invoice.id}/messages/new", InvoiceMessageTemplate
+        )
+        message = await events.create(
+            invoice.id,
+            InvoiceMessageCreate(
+                recipients=[
+                    InvoiceMessageRecipientInput(
+                        email=await _owner_alias(demo, "invoice")
+                    )
+                ],
+                subject=template.subject,
+                body=template.body,
+            ),
+        )
+        await livecheck.check_list(
+            demo,
+            f"invoices/{invoice.id}/messages",
+            "invoice_messages",
+            InvoiceMessage,
+            {},
+        )
+        await events.delete(invoice.id, message.id)
+    finally:
+        await demo.invoices.delete(invoice.id)
