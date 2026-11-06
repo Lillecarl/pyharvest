@@ -76,6 +76,25 @@ from pyharvest.models.projects import (
     TaskAssignmentCreate,
     UserAssignmentCreate,
 )
+from pyharvest.models.pto import (
+    HolidayCalendar,
+    HolidayCalendarCreate,
+    HolidayCalendarEntry,
+    HolidayCalendarEntryCreate,
+    HolidayCalendarEntryUpdate,
+    PtoAccrualType,
+    PtoAllocation,
+    PtoAllocationUpdate,
+    PtoAssignmentUpdate,
+    TimeOffBalanceSheet,
+    TimeOffPolicyCreate,
+    TimeOffRequest,
+    TimeOffRequestCreate,
+    TimeOffRequestStatus,
+    TimeOffRequestUpdate,
+    WorkSchedule,
+    WorkScheduleCreate,
+)
 from pyharvest.models.reports import (
     ExportFormat,
     ExportStatus,
@@ -592,6 +611,145 @@ async def test_client_contact_project_updates(demo: Harvest, seed: Seed) -> None
     assert (project.code, project.budget) == ("PYH", Decimal(200))
     cleared = await demo.projects.update(seed.project_id, ProjectUpdate(notes=None))
     assert cleared.notes is None or cleared.notes == ""
+
+
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday")
+
+
+async def test_time_off_round_trip(demo: Harvest, seed: Seed) -> None:
+    year = livecheck.TODAY.year
+    # A Monday four weeks out: future, so requests stay pending until reviewed.
+    monday = livecheck.TODAY + dt.timedelta(days=28 - livecheck.TODAY.weekday())
+    async with AsyncExitStack() as stack:
+        policy = await demo.time_off_policies.create(
+            TimeOffPolicyCreate(
+                name=name("policy"),
+                accrual_type=PtoAccrualType.FIXED,
+                default_days_per_year=20,
+                requires_approval=True,
+            )
+        )
+        _cleanup(stack, demo.time_off_policies.delete_with_history, policy.id)
+        schedule = await demo.work_schedules.create(
+            WorkScheduleCreate(
+                name=name("schedule"), **{f"{d}_hours": 8 for d in WEEKDAYS}
+            )
+        )
+        _cleanup(stack, demo.work_schedules.deactivate, schedule.id)
+        assert schedule.weekly_hours == 40
+        calendar = await demo.holiday_calendars.create(
+            HolidayCalendarCreate(name=name("calendar"))
+        )
+        _cleanup(stack, demo.holiday_calendars.delete, calendar.id)
+        holiday = await demo.holiday_calendar_entries.create(
+            calendar.id,
+            HolidayCalendarEntryCreate(
+                name=name("holiday"), date=monday + dt.timedelta(days=14)
+            ),
+        )
+        await demo.holiday_calendar_entries.update(
+            calendar.id, holiday.id, HolidayCalendarEntryUpdate(name=name("holiday"))
+        )
+
+        before = await anext(demo.pto_assignments.list(user_id=seed.user_id))
+        await demo.pto_assignments.update(
+            seed.user_id,
+            PtoAssignmentUpdate(
+                holiday_calendar_id=calendar.id, work_schedule_id=schedule.id
+            ),
+        )
+        stack.push_async_callback(
+            demo.pto_assignments.update,
+            seed.user_id,
+            PtoAssignmentUpdate(
+                holiday_calendar_id=before.holiday_calendar
+                and before.holiday_calendar.id,
+                work_schedule_id=before.work_schedule and before.work_schedule.id,
+            ),
+        )
+        # Comma-joined ids filter: a list naming only an absent id finds nothing.
+        assert [
+            a.user.id
+            async for a in demo.pto_assignments.list(user_ids=[seed.user_id, 1])
+        ] == [seed.user_id]
+        assert [a async for a in demo.pto_assignments.list(user_ids=[1])] == []
+
+        override = await demo.pto_allocations.update(
+            PtoAllocationUpdate(
+                user_id=seed.user_id, pto_type_id=policy.id, year=year, days_per_year=25
+            )
+        )
+        assert isinstance(override, PtoAllocation)
+        found = [
+            a
+            async for a in demo.pto_allocations.list(
+                year=year, user_ids=[seed.user_id], pto_type_ids=[policy.id, 1]
+            )
+        ]
+        assert [a.pto_type.id for a in found] == [policy.id]
+        assert [
+            a async for a in demo.pto_allocations.list(year=year, pto_type_ids=[1])
+        ] == []
+        await livecheck.check_list(
+            demo, "pto/allocations", "pto_allocations", PtoAllocation, {"year": year}
+        )
+
+        def request(day: int) -> TimeOffRequestCreate:
+            date = monday + dt.timedelta(days=day)
+            return TimeOffRequestCreate(
+                pto_type_id=policy.id,
+                start_date=date,
+                end_date=date,
+                notes=name("time off"),
+            )
+
+        approved = await demo.time_off_requests.create(request(0))
+        approved = await demo.time_off_requests.approve(approved.id)
+        assert approved.status == TimeOffRequestStatus.APPROVED
+        reviewed = await demo.time_off_requests.create(request(1))
+        reviewed = await demo.time_off_requests.request_changes(reviewed.id, "Why?")
+        assert reviewed.status == TimeOffRequestStatus.CHANGES_REQUESTED
+        # Measured: an update without the dates answers 422 "Start date can't
+        # be blank", though the docs mark no update field required.
+        reviewed = await demo.time_off_requests.update(
+            reviewed.id,
+            TimeOffRequestUpdate(
+                start_date=reviewed.start_date,
+                end_date=reviewed.end_date,
+                notes=name("time off"),
+            ),
+        )
+        assert reviewed.status == TimeOffRequestStatus.PENDING
+        declined = await demo.time_off_requests.decline(reviewed.id, reason="No")
+        assert declined.status == TimeOffRequestStatus.DECLINED
+        bulk = [await demo.time_off_requests.create(request(d)) for d in (2, 3)]
+        result = await demo.time_off_requests.approve_many([r.id for r in bulk])
+        assert sorted(r.id for r in result.pto_requests) == sorted(r.id for r in bulk)
+        cancelled = await demo.time_off_requests.cancel(bulk[0].id)
+        assert cancelled.status == TimeOffRequestStatus.CANCELLED
+        await livecheck.check_list(
+            demo,
+            "pto/requests",
+            "pto_requests",
+            TimeOffRequest,
+            {"pto_type_id": policy.id},
+        )
+
+        sheet = await demo.time_off_balances.get(user_id=seed.user_id, year=year)
+        assert policy.id in {b.pto_type.id for b in sheet.balances}
+        await livecheck.check_object(
+            demo, f"pto/balances?user_id={seed.user_id}", TimeOffBalanceSheet
+        )
+        for path, key, model in [
+            ("pto/work_schedules", "pto_work_schedules", WorkSchedule),
+            ("pto/holiday_calendars", "pto_holiday_calendars", HolidayCalendar),
+            (
+                f"pto/holiday_calendars/{calendar.id}/entries",
+                "pto_holiday_calendar_entries",
+                HolidayCalendarEntry,
+            ),
+        ]:
+            await livecheck.check_list(demo, path, key, model, {})
 
 
 async def test_company_update(demo: Harvest) -> None:

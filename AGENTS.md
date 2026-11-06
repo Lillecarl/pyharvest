@@ -33,8 +33,8 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 
 - Multipart: `send(..., files=)` posts the payload as form fields (no null). Expense receipts use it; `POST /v2/imports` does not yet.
 - File downloads: `session.download(url)` sends the token, so it allows only `https://*.harvestapp.com` and treats any non-200 as an error. Receipt URLs are on the account subdomain, not the API host.
-- The dev account is a member: most sections 403 and PTO/approvals/reimbursements are disabled, so those models follow the docs. An admin token run of `tests/test_live.py` validates them.
-- Unverified: PTO `user_ids`/`pto_type_ids` are sent comma-joined (Rails may want `user_ids[]`). The demo account needs Time Off turned on to settle it.
+- The dev account is a member: most sections 403 and PTO/approvals/reimbursements are disabled. The demo account (`pytest -m demo`) validates them, except reimbursements (403 on the trial).
+- PTO `user_ids`/`pto_type_ids` go comma-joined; Harvest filters on that and on `user_ids[]` alike.
 - Detailed report `totals` come from separate `*_detailed_totals` calls (one `per_page=1` GET): `paginate` yields rows only.
 - Accounts on Harvest's new roles refuse access role `manager`; they take `member`, `project_manager`, `people_admin`, `accounting`, `executive_manager`, `administrator`. `access_roles` stays `str`.
 - Time has no approve endpoint. `expenses.approve` approves the expense and the submitter's time on that project and day; `withdraw` returns both to submitted.
@@ -59,6 +59,7 @@ Async client for https://help.getharvest.com/api-v2/. anyio, httpx, pydantic.
 - `HARVEST_ENV_FILE=<file>` makes `Harvest.from_env()` read only that file. Scripts: `HARVEST_ENV_FILE=.demoenv python ...`. MCP: `mcp__pyharvest-demo__*` hits the demo, `mcp__pyharvest__*` Dynamist.
 - `pytest -m demo` runs `tests/test_demo.py`: writes, demo only, refuses a non-trial company. The `seed` fixture builds one record of each kind for the shared checks in `tests/livecheck.py`, then deletes it. Name records with `name()` and delete them in `finally`. Trials expire; a new one needs a new `.demoenv`.
 - Harvest never deletes a task or expense category that time or an expense used, even after the project is gone: archive (`is_active=False`). The seed borrows the account's own.
+- Work schedules have no delete, only deactivate: each demo run leaves one inactive `PREFIX` schedule (hidden from the default list).
 - `seed` first sweeps `PREFIX` records a killed run left (a stale custom role blocks a new one with the same permissions).
 - Estimate and invoice message posts (events too) have a small daily quota on the trial: then 429 with `Retry-After` 86400, growing on each refused post. The tests skip; do not probe them repeatedly.
 

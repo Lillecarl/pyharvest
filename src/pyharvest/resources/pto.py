@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 
 def _id_list(ids: Sequence[int] | None) -> str | None:
-    # Comma-joined: unverified against a PTO-enabled account.
+    # Measured: Harvest filters on "1,2" and on user_ids[]=1&user_ids[]=2 alike.
     return None if ids is None else ",".join(map(str, ids))
 
 
@@ -121,7 +121,10 @@ class TimeOffRequests:
     async def update(
         self, request_id: int, changes: TimeOffRequestUpdate
     ) -> TimeOffRequest:
-        """Harvest cancels the original and returns a replacement with a new id."""
+        """Harvest cancels the original and returns a replacement with a new id.
+
+        Send ``start_date`` and ``end_date`` even when they do not change:
+        without them Harvest answers 422 "Start date can't be blank"."""
         return await self._session.send(
             "PATCH", f"pto/requests/{request_id}", TimeOffRequest, changes
         )
